@@ -64,7 +64,7 @@ SteamFilterAudioProcessor::APVTS::ParameterLayout SteamFilterAudioProcessor::cre
     p.push_back(std::make_unique<juce::AudioParameterChoice>(juce::ParameterID{"polishMode",1},"SteamPolish character",
         juce::StringArray{"Warm","Presence","Air"},0));
     pushFloat(p,"polishAmount","SteamPolish amount",0,1,.34f);
-    return APVTS::ParameterLayout(std::move(p));
+    return APVTS::ParameterLayout(p.begin(), p.end());
 }
 
 bool SteamFilterAudioProcessor::isBusesLayoutSupported(const BusesLayout& l) const {
