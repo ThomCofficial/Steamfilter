@@ -30,7 +30,7 @@ private:
         void paint(juce::Graphics&) override;
         void timerCallback() override{if(isShowing())repaint();}
     };
-    struct ModuleMeter final : juce::Component, private juce::Timer {
+    struct ModuleMeter final : juce::Component, public juce::SettableTooltipClient, private juce::Timer {
         SteamFilterAudioProcessor& owner;
         int index;float displayed=0;
         ModuleMeter(SteamFilterAudioProcessor& p,int n):owner(p),index(n){startTimerHz(24);}
