@@ -1,0 +1,46 @@
+name: SteamFilter engineering checks
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  dsp-tests:
+    name: DSP stress (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-2022, ubuntu-24.04]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure standalone DSP
+        run: cmake -S . -B build/dsp -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON -DSTEAMFILTER_BUILD_PLUGIN=OFF
+      - name: Build tests
+        run: cmake --build build/dsp --config Release --parallel
+      - name: Run tests
+        run: ctest --test-dir build/dsp -C Release --output-on-failure
+  vst3-compile:
+    name: VST3 compiler check (Windows)
+    needs: dsp-tests
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure JUCE 9.0.4
+        run: cmake -S . -B build/win -G "Visual Studio 17 2022" -A x64 -DSTEAMFILTER_BUILD_PLUGIN=ON -DBUILD_TESTING=ON
+      - name: Compile VST3 (no release and no deployment)
+        run: cmake --build build/win --config Release --target SteamFilter_VST3 --parallel 4
+      - name: Run the DSP tests again with MSVC
+        run: |
+          cmake --build build/win --config Release --target SteamDSPStress SteamDSPModules --parallel 4
+          ctest --test-dir build/win -C Release --output-on-failure
+      - name: Ensure an actual plugin bundle was produced
+        shell: pwsh
+        run: |
+          $bundles = Get-ChildItem -Path build/win -Filter "SteamFilter.vst3" -Recurse
+          if ($bundles.Count -eq 0) { throw "VST3 bundle not produced" }
+      # Intentionally NO artifact upload or release step.
+      # A usable installer/release requires Cubase, pluginval, real vocals,
+      # and approval after manual verification.

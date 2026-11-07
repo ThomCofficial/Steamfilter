@@ -1,0 +1,1 @@
+`MaritimeHeader.jpg` is the static decorative banner derived from the in-conversation visual concept, not the whole faceplate. All knobs, meters, buttons, waveforms and labels are rendered/animated with JUCE.

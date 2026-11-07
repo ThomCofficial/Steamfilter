@@ -1,0 +1,30 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {"major": 3, "minor": 22, "patch": 0},
+  "configurePresets": [
+    {
+      "name": "dsp-release",
+      "displayName": "DSP tests without JUCE",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/dsp-release",
+      "cacheVariables": {"CMAKE_BUILD_TYPE": "Release", "BUILD_TESTING": "ON", "STEAMFILTER_BUILD_PLUGIN": "OFF"}
+    },
+    {
+      "name": "windows-vst3",
+      "displayName": "Windows VST3 with JUCE",
+      "generator": "Visual Studio 17 2022",
+      "architecture": "x64",
+      "binaryDir": "${sourceDir}/build/windows-vst3",
+      "cacheVariables": {"BUILD_TESTING": "ON", "STEAMFILTER_BUILD_PLUGIN": "ON"},
+      "condition": {"type": "equals", "lhs": "${hostSystemName}", "rhs": "Windows"}
+    }
+  ],
+  "buildPresets": [
+    {"name": "dsp-release", "configurePreset": "dsp-release"},
+    {"name": "windows-vst3", "configurePreset": "windows-vst3", "configuration": "Release"}
+  ],
+  "testPresets": [
+    {"name": "dsp-release", "configurePreset": "dsp-release", "output": {"outputOnFailure": true}},
+    {"name": "windows-vst3", "configurePreset": "windows-vst3", "configuration": "Release", "output": {"outputOnFailure": true}}
+  ]
+}

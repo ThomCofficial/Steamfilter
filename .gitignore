@@ -1,0 +1,21 @@
+# CMake / IDE / JUCE build artefacts
+build/
+build-*/
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+*.obj
+*.o
+*.a
+*.lib
+*.pdb
+*.ilk
+*.dSYM/
+*.vst3/
+*.vst3
+*.component/
+.DS_Store
+# Do not commit JUCE source clones — FetchContent or local JUCE checkout.
+JUCE/
