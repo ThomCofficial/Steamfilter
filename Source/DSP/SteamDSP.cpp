@@ -51,6 +51,7 @@ void Engine::prepare(double sampleRate,int maxBlock,int channels) {
     fs=clamp(sampleRate,8000.,384000.);
     maximumBlock=std::max(1,maxBlock);
     activeChannels=clamp(channels,1,2);
+    pitchStride=std::max(1,int(fs/8000.0+.5));
     lookaheadSamples=clamp(int(fs*.020),1,delayCapacity-1);
     reset();
     constexpr float frequencies[]={150.f,450.f,1600.f,4500.f,9000.f};
@@ -64,6 +65,8 @@ void Engine::reset() {
     controlDelay.fill(DetectorGains{});
     delayWrite=0;
     detectorLp.fill(0);eFast.fill(0);eSlow.fill(0);
+    pitchHistory.fill(0.f);pitchWrite=pitchDiv=pitchTicks=0;
+    periodicity=0.f;breathHold=0;
     moduleMix.fill(1.f);moduleMixInitialized=false;
     rmsEnv=slowRms=sideEnv=0; breathGain=sibilGain=plosiveGain=clickGain=noiseGain=1;
     riderGainDb=liftGainDb=0; riderGainLinear=liftGainLinear=riderTargetLinear=liftTargetLinear=1; bypassMix=1;inputGain=outputGain=1; modCounter=0;
@@ -106,62 +109,70 @@ void Engine::updateFilters(const Settings& s) {
 
 void Engine::updateDetectors(const Settings& s) {
     const float lo=eFast[0], body=eFast[1]+eFast[2], presence=eFast[3], hiss=eFast[4];
-    const float broadband=lo+body+presence+hiss+1.e-7f;
+    const float broadband=lo+body+presence+hiss+1.e-8f;
     const float db=gainToDb(rmsEnv);
-    // Sibilance: relatively strong sustained HF above ~4.5k; suppress short clicks.
-    const float commonThreshold=1.18f-.36f*clamp(s.detectorSensitivity,0.f,1.f);
-    const bool hissStrong=(hiss>(body+lo)*(.65f-.28f*s.sibilSensitivity)*commonThreshold) &&
-                          (hiss>presence*1.0f) && hiss>.0007f && db>-58.f;
-    // Plosives: transient low-frequency energy dominates the vocal bands.
-    const bool bassBurst=(lo > std::max(0.003f,eSlow[0])* (2.8f-1.5f*s.plosiveSensitivity)*commonThreshold) &&
-                          lo>(body+presence)*(.7f-.3f*s.plosiveSensitivity) && db>-52.f;
-    // Broadband click candidate: exceptionally brief high-band transient;
-    // the safety cap prevents aggressive mutation of ordinary consonants.
-    const bool click=(hiss>std::max(.0005f,eSlow[4])*(8.f-3.f*s.clickStrength)) &&
-                     hiss>.004f && db>-60.f;
-    // Breath classification requires sustained, low-mid-poor noise, excludes sibilants/plosives.
-    const bool noiseLike=(hiss+presence) > (body+lo)*(.78f-.33f*s.breathSensitivity)*commonThreshold &&
-                         !hissStrong && !bassBurst && db>-56.f;
-    breathCount=noiseLike?std::min(breathCount+1,12):std::max(0,breathCount-(s.breathLength>.5f?1:2));
-    if(bassBurst) popHold=int(fs*clamp(s.plosiveHoldMs,10.f,150.f)*.001f/64.f)+1;
+    // Correlation over multiple pitch periods distinguishes voiced vowels
+    // from aperiodic breath noise; loudness alone is not a breath detector.
+    const bool voiced=(periodicity>.59f && (body+lo)>.00015f && db>-76.f);
+    const float threshold=1.15f-.28f*clamp(s.detectorSensitivity,0.f,1.f);
+    const bool hissStrong=(hiss>(body+lo)*(2.18f-.36f*s.sibilSensitivity)*threshold) &&
+        hiss>presence*(1.16f-.24f*s.sibilSensitivity) && hiss>.00035f && db>-72.f;
+    const bool bassBurst=(lo>std::max(.0018f,eSlow[0])*(2.65f-1.35f*s.plosiveSensitivity)*threshold) &&
+        lo>(body+presence)*(.67f-.23f*s.plosiveSensitivity) && db>-62.f;
+    const bool click=(hiss>std::max(.00035f,eSlow[4])*(7.6f-2.9f*s.clickStrength)) &&
+        hiss>.0025f && db>-72.f;
+    // A breath has broadband noisy energy, little pitch periodicity and
+    // non-negligible lower-mid air. A pure /s/ high-band burst is excluded.
+    const float highShare=(presence+hiss)/broadband;
+    const bool broadbandAir=(body+presence) > hiss*.40f && (presence+hiss)>.00012f;
+    const bool noiseLike = !voiced && !hissStrong && !bassBurst && !click &&
+        highShare>(.27f-.10f*clamp(s.breathSensitivity,0.f,1.f)) &&
+        broadbandAir && db>-78.f;
+    breathCount=noiseLike?std::min(breathCount+1,100):std::max(0,breathCount-4);
+    // Require ~24ms of consistent aperiodic energy to protect consonants.
+    if(breathCount>=16)breathHold=std::max(breathHold,14);
+    else if(breathHold>0)--breathHold;
+    if(voiced || hissStrong || bassBurst)breathHold=0;
+    if(bassBurst)popHold=int(fs*clamp(s.plosiveHoldMs,10.f,150.f)*.001f/64.f)+1;
     else popHold=std::max(0,popHold-1);
-    if(click) clickHold=std::max(1,int(fs*.012f/64.f));
+    if(click)clickHold=std::max(1,int(fs*.012f/64.f));
     else clickHold=std::max(0,clickHold-1);
     events=0;
-    if(breathCount>=(s.breathLength>.75f?5:7)) events|=EventBreath;
-    if(popHold>0) events|=EventPlosive;
-    if(hissStrong && !click) events|=EventSibil;
-    if(clickHold>0) events|=EventClick;
+    if(breathHold>0 && noiseLike)events|=EventBreath;
+    if(popHold>0)events|=EventPlosive;
+    if(hissStrong && !click)events|=EventSibil;
+    if(clickHold>0)events|=EventClick;
 
-    lastBreathTarget = (events&EventBreath)? dbToGain(-s.breathReductionDb*(1.f-.6f*s.breathPreserve)):1.f;
-    lastSibilTarget  = (events&EventSibil)? dbToGain(-s.sibilReductionDb):1.f;
+    // One large BREATH AMOUNT knob: 0 dB means no change, full scale
+    // provides a substantial reduction without muting an entire phrase.
+    lastBreathTarget=(events&EventBreath)?dbToGain(-clamp(s.breathReductionDb,0.f,36.f)):1.f;
+    lastSibilTarget=(events&EventSibil)?dbToGain(-s.sibilReductionDb):1.f;
     lastPlosiveTarget=(events&EventPlosive)?dbToGain(-s.plosiveReductionDb):1.f;
     lastClickTarget=(events&EventClick)?(1.f-.75f*s.clickStrength*s.sweepAmount):1.f;
     noiseTarget=(db < -54.f && !(events&EventBreath))?dbToGain(-s.noiseReductionDb*s.sweepAmount):1.f;
 
-    // Low-frequency energy and spectral activity help distinguish speech from silence;
-    // no lift or riding below -55 dBFS, where boosting noise is unsafe.
-    const bool vocalActive = db>-55.f && (body+presence+hiss)>.00045f;
-    const bool meaningfulVocal=vocalActive && (events&(EventBreath|EventSibil|EventPlosive|EventClick))==0;
+    const bool vocalActive = db>-66.f && (body+presence+hiss)>.00012f;
+    const bool meaningfulVocal=vocalActive && (voiced || !noiseLike) &&
+        (events&(EventBreath|EventSibil|EventPlosive|EventClick))==0;
     lastVocalActive=meaningfulVocal;
     const float drive=(s.riderTargetDb-db);
     lastRiderTarget=meaningfulVocal?clamp(drive*.45f*s.riderAmount,-s.riderRangeDb,s.riderRangeDb):0.f;
     const float margin=s.liftThresholdDb-db;
     lastLiftTarget=(meaningfulVocal || (!s.voiceProtect && db>-70.f)) && margin>0 ?
         clamp(margin*.50f*s.liftStrength,0.f,s.liftMaxDb):0.f;
-    if(std::abs(lastRiderTarget)>.25f) events|=EventRider;
-    if(lastLiftTarget>.25f) events|=EventWhisper;
+    if(std::abs(lastRiderTarget)>.25f)events|=EventRider;
+    if(lastLiftTarget>.25f)events|=EventWhisper;
     currentRmsDb.store(db,std::memory_order_relaxed);
 
     if(capture.samples>0) {
         ++capture.detected;
-        capture.active+=(db>-48.f && db < 0.f)?1:0;
+        capture.active+=(db>-66.f && db<0.f)?1:0;
         capture.breaths+=(events&EventBreath)?1:0;
         capture.pops+=(events&EventPlosive)?1:0;
         capture.sibilants+=(events&EventSibil)?1:0;
         capture.clicks+=(events&EventClick)?1:0;
         capture.rmsDbSum+=db;
-        capture.brightSum+=double(hiss/(broadband));
+        capture.brightSum+=double(hiss/broadband);
     }
 }
 
@@ -220,6 +231,8 @@ void Engine::process(float* const* audio,const float* const* sidechain,int chann
     }
     const float sr=float(fs),inTarget=dbToGain(s.inputDb),outTarget=dbToGain(s.outputDb);
     float inMax=0,outMax=0;
+    const float maxCompoundedGain=dbToGain(clamp(s.maxGainDb,0.f,18.f));
+    const int waveformPeriod=std::max(1,int(sr/100.f));
     std::array<double,kModuleCount> beforeEnergy{},afterEnergy{};
     auto accumulate=[&](int module,float before,float after){
         beforeEnergy[module]+=double(before)*before;
@@ -247,6 +260,28 @@ void Engine::process(float* const* audio,const float* const* sidechain,int chann
         }
         rmsEnv=smooth(rmsEnv,amp(mono),.035f,sr);
         slowRms=smooth(slowRms,amp(mono),.15f,sr);
+        // Decimated normalized autocorrelation: roughly 0.3M multiply-adds/s,
+        // independent of host buffer size and safe across mono/stereo vocals.
+        if(++pitchDiv>=pitchStride) {
+            pitchDiv=0;
+            pitchHistory[pitchWrite]=mono;
+            pitchWrite=(pitchWrite+1)%pitchSize;
+            if(++pitchTicks>=32) {
+                pitchTicks=0;
+                float strongest=0.f;
+                for(int lag=20;lag<=112;lag+=4) {
+                    double dot=0,aa=0,bb=0;
+                    for(int n=0;n<96;n+=2) {
+                        const float x=pitchHistory[(pitchWrite+pitchSize-1-n)%pitchSize];
+                        const float y=pitchHistory[(pitchWrite+pitchSize-1-n-lag)%pitchSize];
+                        dot+=double(x)*y;aa+=double(x)*x;bb+=double(y)*y;
+                    }
+                    if(aa>1.e-10 && bb>1.e-10)
+                        strongest=std::max(strongest,float(dot/std::sqrt(aa*bb)));
+                }
+                periodicity=std::max(0.f,strongest);
+            }
+        }
         if((++detectCounter&63)==0) updateDetectors(s);
 
         if(sidechain && sideChannels>0 && sidechain[0]) {
@@ -266,7 +301,8 @@ void Engine::process(float* const* audio,const float* const* sidechain,int chann
         // User-adjustable global smoothing: 0 = fast, 1 = extra natural.
         // The click/plosive envelope remains fast enough to catch transients.
         const float response=.35f+1.3f*clamp(s.smoothing,0.f,1.f);
-        breathGain=smooth(breathGain,lastBreathTarget,.015f*response,sr);
+        breathGain=smooth(breathGain,lastBreathTarget,
+            (lastBreathTarget<breathGain?.0045f:.060f)*response,sr);
         plosiveGain=smooth(plosiveGain,lastPlosiveTarget,.006f*response,sr);
         clickGain=smooth(clickGain,lastClickTarget,.001f*response,sr);
         sibilGain=smooth(sibilGain,lastSibilTarget,.007f*response,sr);
@@ -282,7 +318,7 @@ void Engine::process(float* const* audio,const float* const* sidechain,int chann
         float effectiveLift=1.f+(liftGainLinear-1.f)*moduleMix[Lift];
         // Protect against stacking SteamRider and WhisperLift beyond the chosen ceiling.
         const float compound=effectiveRider*effectiveLift;
-        if(compound>dbToGain(s.maxGainDb)) effectiveLift*=dbToGain(s.maxGainDb)/compound;
+        if(compound>maxCompoundedGain) effectiveLift*=maxCompoundedGain/compound;
         controlDelay[delayWrite]={breathGain,plosiveGain,sibilGain,clickGain,noiseGain};
         // The 20ms host-reported maximum latency is constant. The LOOKAHEAD control
         // adjusts detector lead without ever changing host latency mid-stream.
@@ -359,7 +395,7 @@ void Engine::process(float* const* audio,const float* const* sidechain,int chann
         }
         delayWrite=(delayWrite+1)%delayCapacity;
         wavePeak=std::max(wavePeak,amp(mono));waveEvents|=events;
-        if(++waveCounter>=std::max(1,int(sr/100.f))) {
+        if(++waveCounter>=waveformPeriod) {
             const auto index=waveWrite.load(std::memory_order_relaxed)%waveSize;
             waveform[index].store(packWave(wavePeak,gainToDb(effectiveRider),waveEvents,
                                            gainToDb(effectiveLift)),std::memory_order_release);

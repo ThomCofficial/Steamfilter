@@ -49,25 +49,37 @@ BrassLookAndFeel::BrassLookAndFeel(){
     setColour(juce::Slider::textBoxOutlineColourId,brass);
 }
 void BrassLookAndFeel::drawRotarySlider(juce::Graphics& g,int x,int y,int w,int h,float pos,float start,float end,juce::Slider&) {
-    // Every dial uses a cleaned, transparent sprite from the approved SteamFilter artwork.
-    // The ivory scale/legends remain on the faceplate; only the physical dial moves.
-    const bool small=std::min(w,h)<72;
-    static const auto main=juce::ImageCache::getFromMemory(BinaryData::KnobMain_png,BinaryData::KnobMain_pngSize);
-    static const auto mini=juce::ImageCache::getFromMemory(BinaryData::KnobMini_png,BinaryData::KnobMini_pngSize);
-    const auto image=small?mini:main;
-    if(image.isValid())g.drawImageWithin(image,x,y,w,h,juce::RectanglePlacement::centred);
-    const float cx=x+w*.5f,cy=y+h*.5f;
-    const float radius=std::min(w,h)*(small?.31f:.32f);
+    // One *moving* indicator and a procedurally illuminated dial. Do not
+    // overlay a static pointer image on another, otherwise knobs appear doubled.
+    const float cx=float(x)+float(w)*.5f,cy=float(y)+float(h)*.5f;
+    const float d=float(std::min(w,h))*.83f;
+    const float left=cx-d*.5f,top=cy-d*.5f;
+    auto outer=juce::Rectangle<float>(left,top,d,d);
+    g.setColour(juce::Colour(0xff241e18));g.fillEllipse(outer.expanded(2.0f));
+    g.setColour(juce::Colour(0xfff0b64d));g.drawEllipse(outer,3.f);
+    auto inner=outer.reduced(d*.085f);
+    g.setGradientFill(juce::ColourGradient(juce::Colour(0xff7c7770),
+        inner.getX()+inner.getWidth()*.13f,inner.getY()+inner.getHeight()*.10f,
+        juce::Colour(0xff181b20),inner.getRight(),inner.getBottom(),false));
+    g.fillEllipse(inner);
+    g.setColour(juce::Colour(0xffd6a45c));g.drawEllipse(inner,1.4f);
+    auto centre=inner.reduced(d*.13f);
+    g.setGradientFill(juce::ColourGradient(juce::Colour(0xff494b4b),
+        centre.getX(),centre.getY(),juce::Colour(0xff17191c),
+        centre.getRight(),centre.getBottom(),false));
+    g.fillEllipse(centre);
     const float angle=start+pos*(end-start);
-    const float dx=std::sin(angle),dy=-std::cos(angle); // 0 = twelve o'clock
-    g.setColour(juce::Colours::black.withAlpha(.7f));
-    g.drawLine(cx+1.5f,cy+2.f,cx+dx*radius+1.5f,cy+dy*radius+2.f,small?3.5f:6.f);
-    g.setColour(juce::Colour(0xfff58a27));
-    g.drawLine(cx,cy,cx+dx*radius,cy+dy*radius,small?2.7f:4.1f);
-    g.setColour(juce::Colour(0xffffe09a));
-    g.drawLine(cx,cy,cx+dx*radius*.97f,cy+dy*radius*.97f,small?.8f:1.2f);
-    g.setColour(juce::Colour(0xffffbe56));g.fillEllipse(cx-(small?2.5f:4.f),cy-(small?2.5f:4.f),small?5.f:8.f,small?5.f:8.f);
+    const float radius=d*.28f;
+    const float vx=std::sin(angle),vy=-std::cos(angle);
+    g.setColour(juce::Colours::black.withAlpha(.8f));
+    g.drawLine(cx+1.5f,cy+2.f,cx+vx*radius+1.5f,cy+vy*radius+2.f,d*.085f);
+    g.setColour(juce::Colour(0xffffa43d));
+    g.drawLine(cx,cy,cx+vx*radius,cy+vy*radius,d*.064f);
+    g.setColour(juce::Colour(0xffffedac));
+    g.drawLine(cx,cy,cx+vx*radius*.95f,cy+vy*radius*.95f,d*.019f);
+    g.setColour(juce::Colour(0xffedc277));g.fillEllipse(cx-2.5f,cy-2.5f,5.f,5.f);
 }
+
 void BrassLookAndFeel::drawButtonBackground(juce::Graphics& g,juce::Button& b,const juce::Colour&,bool over,bool down) {
     // The engraved buttons are already part of the approved artwork. Only interactive
     // illumination is painted here, never cheap replacement rectangles or text.
@@ -135,9 +147,6 @@ SteamFilterAudioProcessorEditor::SteamFilterAudioProcessorEditor(SteamFilterAudi
     addTextButton("PRESETS",1179,112,151,33,[this]{showPresets();});
     addTextButton("SAVE",1538,112,41,33,[this]{savePreset();});
     addTextButton("LOAD",1347,112,187,33,[this]{loadPreset();});
-    factoryButtons[0]=addTextButton("VOCAL",22,433,111,43,[this]{processor.selectFactoryPreset(1);});
-    factoryButtons[1]=addTextButton("SPEECH",22,479,111,43,[this]{processor.selectFactoryPreset(0);});
-    factoryButtons[2]=addTextButton("CUSTOM",22,524,111,43,[this]{analysisStatus="Custom: adjust parameters freely";repaint();});
     bankAButton=addTextButton("A",890,827,61,43,[this]{processor.switchAB(0);});
     bankBButton=addTextButton("B",954,827,58,43,[this]{processor.switchAB(1);});
     gainMatchButton=addTextButton("GAIN MATCH",1011,827,58,43,[this]{
@@ -147,7 +156,6 @@ SteamFilterAudioProcessorEditor::SteamFilterAudioProcessorEditor(SteamFilterAudi
     deltaButton=addTextButton("DELTA",1466,816,160,47,[this]{
         if(auto* param=processor.state.getParameter("delta")) processor.setParameterValue("delta",param->getValue()>.5f?0:1);
     });
-    addKnob("riderRange",1202,806,58);addKnob("liftRange",1343,806,58);
     addKnob("globalMix",425,808,54);addKnob("maxGain",345,808,54);
     addKnob("detectorSensitivity",557,808,54);addKnob("lookahead",650,808,54);
     addKnob("smoothing",757,808,54);
@@ -155,20 +163,6 @@ SteamFilterAudioProcessorEditor::SteamFilterAudioProcessorEditor(SteamFilterAudi
        if(p)processor.setParameterValue("sidechain",p->load()>.5f?0.f:1.f);});
     voiceProtectButton=addTextButton("VOICE PROTECT",1150,631,162,35,[this]{auto* p=processor.state.getRawParameterValue("voiceProtect");
        if(p)processor.setParameterValue("voiceProtect",p->load()>.5f?0.f:1.f);});
-    for(int k=0;k<4;++k){
-       constexpr const char* presetNames[4][3]={{"GENTLE","BALANCED","DEEP"},
-       {"NATURAL","GENTLE","CLEAN"},{"BROAD","FOCUS","DYNAMIC"},{"SPLIT","WIDE","DYNAMIC"}};
-       const float px[4][3]={{151,213,279},{355,415,477},{555,618,682},{750,814,879}};
-       for(int j=0;j<3;++j) modes[k][j]=addTextButton(presetNames[k][j],px[k][j],631,55,40,[this,k,j]{
-          for(int m=0;m<3;++m)if(modes[k][m])modes[k][m]->setToggleState(m==j,juce::dontSendNotification);
-          if(k==0){processor.setParameterValue("sweepAmount",j==0?.2f:j==1?.55f:.95f);}
-          if(k==1){processor.setParameterValue("breathPreserve",j==0?.9f:j==1?.5f:.15f);
-                   processor.setParameterValue("breathReduction",j==0?5.f:j==1?9.f:15.f);}
-          if(k==2){processor.setParameterValue("guardReduction",j==0?5.f:j==1?11.f:16.f);
-                   processor.setParameterValue("guardHold",j==0?24.f:j==1?45.f:70.f);}
-          if(k==3){processor.setParameterValue("sibilWidth",j==0?0.f:j==1?1.f:.5f);}
-       });
-    }
     for(int k=0;k<3;++k){
         const char* names[]={"WARM","PRESENCE","AIR"};
         polishButtons[k]=addTextButton(names[k],1344+k*60.f,573,55,41,[this,k]{processor.setParameterValue("polishMode",float(k));});
@@ -223,12 +217,27 @@ void SteamFilterAudioProcessorEditor::addPanel(int index) {
         {"riderTarget","riderRange","riderSpeed"},{"liftThreshold","liftRange","liftAttack"}};
     constexpr int positions[6][3]={{147,209,272},{349,410,474},{552,617,682},
                                     {748,811,870},{948,1010,1072},{1146,1210,1272}};
-    if(index<6)for(int j=0;j<3;++j)addKnob(small[index][j],float(positions[index][j]),546,54);
+    if(index<6 && index!=1)for(int j=0;j<3;++j)addKnob(small[index][j],float(positions[index][j]),546,54);
 }
 void SteamFilterAudioProcessorEditor::drawStaticUI(juce::Graphics& g) {
     if(faceplate.isValid())
         g.drawImage(faceplate,0.f,0.f,baseWidth,baseHeight,0,0,faceplate.getWidth(),faceplate.getHeight());
     else g.fillAll(juce::Colour(0xff282427));
+
+    // The approved artwork contains baked-in obsolete labels and buttons.
+    // These four areas are now clean Victorian wallpaper, not dead controls.
+    auto cover=[&](juce::Rectangle<float> r) {
+        metal(g,r); wallpaper(g,r.reduced(7.f));
+    };
+    cover({12.f,393.f,131.f,229.f}); // removed VOCAL/SPEECH/CUSTOM
+    cover({149.f,621.f,184.f,57.f}); // removed SteamSweep presets
+    cover({348.f,621.f,190.f,57.f}); // removed SteamBreath presets
+    cover({551.f,621.f,184.f,57.f}); // removed SteamGuard presets
+    cover({747.f,621.f,184.f,57.f}); // removed SteamSibil presets
+    cover({347.f,546.f,190.f,73.f}); // SteamBreath only needs its AMOUNT knob
+    letters(g,"AUTOMATIC BREATH DETECTION",352.f,566.f,180.f,24.f,12.f,ink,true);
+    cover({1163.f,785.f,286.f,122.f}); // removed LIMITS & SAFETY
+
 }
 void SteamFilterAudioProcessorEditor::paint(juce::Graphics& g) {
     juce::Graphics::ScopedSaveState guard(g);
@@ -277,7 +286,6 @@ void SteamFilterAudioProcessorEditor::timerCallback() {
     };
     reflect(gainMatchButton,"gainMatch");reflect(deltaButton,"delta");reflect(bypassButton,"bypass");
     reflect(sidechainButton,"sidechain");reflect(voiceProtectButton,"voiceProtect");
-    for(int i=0;i<3;++i) if(factoryButtons[i])factoryButtons[i]->setToggleState(false,juce::dontSendNotification);
     if(auto* v=processor.state.getRawParameterValue("polishMode")){
         const int m=juce::jlimit(0,2,int(v->load()));
         for(int i=0;i<3;++i)if(polishButtons[i])polishButtons[i]->setToggleState(i==m,juce::dontSendNotification);
@@ -317,13 +325,31 @@ void SteamFilterAudioProcessorEditor::WaveView::paint(juce::Graphics& g) {
     }
     g.setColour(green);g.strokePath(rider,juce::PathStrokeType(1.6f));
     g.setColour(amber);g.strokePath(lift,juce::PathStrokeType(1.4f));
-    g.setColour(ivory.withAlpha(.8f));g.setFont(juce::Font("Georgia",11.f,juce::Font::plain));
-    g.drawText("BREATH   •   PLOSIVE   •   MOUTH CLICK   •   SIBILANCE     ─ RIDER     ─ WHISPER",8,6,getWidth()-16,19,juce::Justification::centredLeft);
+    // ASCII-only typography and individually painted colour swatches.
+    // Font substitution in Cubase must not produce mojibake squares.
+    struct Legend{const char* name;juce::Colour colour;float step;};
+    const Legend legend[]={
+        {"BREATH",juce::Colour(0xfff6bd32),110.f},
+        {"PLOSIVE",juce::Colour(0xffd4453d),113.f},
+        {"CLICK",juce::Colour(0xffbb65d2),95.f},
+        {"SIBILANCE",juce::Colour(0xff4bb7df),122.f},
+        {"RIDER",juce::Colour(0xff69cb86),93.f},
+        {"WHISPER",juce::Colour(0xffff9e24),105.f}
+    };
+    float xx=10.f;
+    for(const auto& item:legend){
+        g.setColour(item.colour);g.fillRoundedRectangle(xx,9.f,8.f,8.f,1.f);
+        g.setColour(ivory);g.setFont(juce::Font("Georgia",11.f,juce::Font::plain));
+        g.drawText(item.name,int(xx+12),4,int(item.step-12),20,juce::Justification::centredLeft);
+        xx+=item.step;
+    }
 }
 void SteamFilterAudioProcessorEditor::ModuleMeter::timerCallback() {
     const auto data=owner.engine.readStats();
     const float target=data.reductionDb[index];
     displayed+=(target-displayed)*.28f;
+    setTooltip(juce::String(displayed,1)+" dB actual "+
+        (displayed>=0.f?"gain":"reduction")+" (not input level)");
     if(isShowing())repaint();
 }
 void SteamFilterAudioProcessorEditor::ModuleMeter::paint(juce::Graphics& g) {

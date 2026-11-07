@@ -44,7 +44,7 @@ SteamFilterAudioProcessor::APVTS::ParameterLayout SteamFilterAudioProcessor::cre
     pushFloat(p,"click","Mouth click reduction",0,1,.2f);
     pushFloat(p,"rumble","Rumble highpass (Hz)",20,120,65,1);
     pushFloat(p,"noise","Noise attenuation (dB)",0,18,6,.1f);
-    pushFloat(p,"breathReduction","Breath attenuation (dB)",0,24,9,.1f);
+    pushFloat(p,"breathReduction","SteamBreath Amount (dB)",0,36,12,.1f);
     pushFloat(p,"breathSensitivity","Breath sensitivity",0,1,.54f);
     pushFloat(p,"breathLength","Breath duration detection",0,1,.5f);
     pushFloat(p,"breathPreserve","Breath naturalness",0,1,.3f);

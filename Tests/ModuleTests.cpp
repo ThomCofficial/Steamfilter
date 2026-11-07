@@ -167,4 +167,42 @@ void lookaheadAndSmoothingAutomation() {
     }
     expect(largestJump<.2f,"lookahead and smoothing changes remain bounded");
 }
-int main(){globalBlendIsTrueDry();makeupCapAndAnalysis();lookaheadAndSmoothingAutomation();moduleSpectra();breathSynthetic();sibilanceSynthetic();dynamics();polish();guardTransient();mouthClickLookahead();lookaheadLatency();silentAnalysisRefusal();allBypassedDelta();std::cout<<"All module behavior tests passed\n";}
+
+void breathVsVoicedAndRelease() {
+    Tester t; t.config.enabled[steam::Breath]=true;
+    t.config.breathReductionDb=30.f;
+    t.config.breathSensitivity=.65f;
+    // A harmonic lead vowel must not be confused with breath.
+    float worstVoiced=0.f;
+    for(int b=0;b<210;++b) {
+        for(int i=0;i<256;++i)
+            t.data[i]=.07f*std::sin(2.f*pi*180.f*(b*256+i)/48000.f);
+        t.run();
+        if(b>90) worstVoiced=std::min(worstVoiced,t.engine.readStats().reductionDb[steam::Breath]);
+    }
+    expect(worstVoiced>-.8f,"voiced harmonic vowel is preserved by SteamBreath");
+    // Realistic broadband air must be identified at quieter recording levels.
+    std::mt19937 rng(827);std::normal_distribution<float> noise(0,1);
+    float peakReduction=0.f;bool heardBreath=false;
+    for(int b=0;b<160;++b){
+        for(int i=0;i<256;++i)t.data[i]=noise(rng)*.012f;
+        t.run();
+        const auto stats=t.engine.readStats();
+        if(b>40) {
+            peakReduction=std::min(peakReduction,stats.reductionDb[steam::Breath]);
+            heardBreath |= (stats.events&steam::EventBreath)!=0;
+        }
+    }
+    expect(heardBreath,"broadband breath triggers detector despite high-frequency content");
+    expect(peakReduction < -5.f,"single breath amount knob produces meaningful reduction");
+    // On returning to pitched speech, attenuation must release naturally.
+    for(int b=0;b<220;++b){
+        for(int i=0;i<256;++i)t.data[i]=.06f*std::sin(2.f*pi*220.f*(b*256+i)/48000.f);
+        t.run();
+    }
+    expect(t.engine.readStats().reductionDb[steam::Breath]>-.8f,
+        "SteamBreath returns to unity on the next voiced phrase");
+    std::cout<<"Breath versus voice: preserved vowel, "<<peakReduction<<" dB air reduction, clean release\n";
+}
+
+int main(){breathVsVoicedAndRelease();globalBlendIsTrueDry();makeupCapAndAnalysis();lookaheadAndSmoothingAutomation();moduleSpectra();breathSynthetic();sibilanceSynthetic();dynamics();polish();guardTransient();mouthClickLookahead();lookaheadLatency();silentAnalysisRefusal();allBypassedDelta();std::cout<<"All module behavior tests passed\n";}

@@ -114,6 +114,13 @@ private:
     std::array<float,5> detectorLp{};
     std::array<float,5> eFast{}, eSlow{};
     float rmsEnv=0, slowRms=0, sideEnv=0;
+    // Voice/breath discrimination: 8 kHz decimated, short autocorrelation.
+    // No FFT, heap allocation, locks or model inference on the audio thread.
+    static constexpr int pitchSize=512;
+    std::array<float,pitchSize> pitchHistory{};
+    int pitchWrite=0, pitchDiv=0, pitchStride=6, pitchTicks=0;
+    float periodicity=0.f;
+    int breathHold=0;
     std::array<float,kModuleCount> moduleMix{};
     bool moduleMixInitialized=false;
     float breathGain=1, sibilGain=1, plosiveGain=1, clickGain=1;
