@@ -45,4 +45,22 @@ if(STEAMFILTER_BUILD_PLUGIN)
   target_link_libraries(SteamFilter PRIVATE SteamDSP SteamFilterArt juce::juce_audio_utils juce::juce_dsp juce::juce_gui_extra)
   target_compile_definitions(SteamFilter PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_VST3_CAN_REPLACE_VST2=0)
   juce_generate_juce_header(SteamFilter)
+  if(BUILD_TESTING AND WIN32)
+    juce_add_console_app(SteamFilterLifecycleSmoke
+      PRODUCT_NAME "SteamFilter Lifecycle Smoke")
+    target_sources(SteamFilterLifecycleSmoke PRIVATE
+      Tests/EditorLifecycleSmoke.cpp
+      Source/PluginProcessor.cpp
+      Source/PluginEditor.cpp)
+    target_link_libraries(SteamFilterLifecycleSmoke PRIVATE
+      SteamDSP SteamFilterArt
+      juce::juce_audio_utils
+      juce::juce_dsp
+      juce::juce_gui_extra)
+    target_compile_definitions(SteamFilterLifecycleSmoke PRIVATE
+      JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_VST3_CAN_REPLACE_VST2=0)
+    juce_generate_juce_header(SteamFilterLifecycleSmoke)
+    add_test(NAME SteamFilterEditorLifecycle COMMAND SteamFilterLifecycleSmoke)
+    set_tests_properties(SteamFilterEditorLifecycle PROPERTIES TIMEOUT 60)
+  endif()
 endif()

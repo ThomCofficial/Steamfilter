@@ -80,6 +80,7 @@ private:
     std::array<juce::TextButton*,3> polishButtons{};
     std::array<std::array<juce::TextButton*,3>,4> modes{};
     std::array<juce::TextButton*,3> factoryButtons{};
+    bool shuttingDown=false;
     bool suggestionAvailable=false;
     steam::Recommendation currentSuggestion{};
     juce::String analysisStatus="Play audio, then analyse";

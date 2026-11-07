@@ -136,7 +136,7 @@ SteamFilterAudioProcessorEditor::SteamFilterAudioProcessorEditor(SteamFilterAudi
         auto safe=juce::Component::SafePointer<SteamFilterAudioProcessorEditor>(this);
         juce::AlertWindow::showOkCancelBox(juce::AlertWindow::QuestionIcon,"SteamFilter analysis",msg,"Apply","Cancel",this,
            juce::ModalCallbackFunction::create([safe](int result){
-              if(safe!=nullptr && result!=0 && safe->suggestionAvailable){safe->processor.applyRecommendation(safe->currentSuggestion);
+              if(safe!=nullptr && !safe->shuttingDown && result!=0 && safe->suggestionAvailable){safe->processor.applyRecommendation(safe->currentSuggestion);
                   safe->analysisStatus="Suggestions applied";safe->suggestionAvailable=false;
                   if(safe->suggestButton)safe->suggestButton->setEnabled(false);}
            }));
@@ -174,14 +174,25 @@ SteamFilterAudioProcessorEditor::SteamFilterAudioProcessorEditor(SteamFilterAudi
     setSize(1672,941);
 }
 SteamFilterAudioProcessorEditor::~SteamFilterAudioProcessorEditor(){
+    // A pending native dialog can invoke its callback during cancellation.
+    // Component::SafePointer alone is insufficient until Component base destruction.
+    shuttingDown=true;
     stopTimer();
-    // Detach listeners before labels and dynamic controls are destroyed.
-    for (auto& knob : knobs) knob->onValueChange = nullptr;
-    for (auto& button : textButtons) button->onClick = nullptr;
+    for(auto& b:textButtons) b->onClick=nullptr;
+    for(auto& s:knobs) {
+        s->onValueChange=nullptr;
+        s->setPopupDisplayEnabled(false,false,nullptr);
+    }
+    fileChooser.reset();
+    // Disconnect APVTS listeners while the controls are still alive.
     knobsBind.clear();
     toggleBind.clear();
-    // Stop any pending native dialog before releasing its callbacks.
-    fileChooser.reset();
+    // Timer components must stop before their owner/processor goes away.
+    cpuGauge.reset();
+    rightMeter.reset();leftMeter.reset();waveform.reset();
+    for(auto& meter:moduleMeters)meter.reset();
+    textButtons.clear();toggleButtons.clear();knobs.clear();
+    knobRects.clear();buttonRects.clear();
     setLookAndFeel(nullptr);
 }
 
@@ -220,24 +231,237 @@ void SteamFilterAudioProcessorEditor::addPanel(int index) {
     if(index<6 && index!=1)for(int j=0;j<3;++j)addKnob(small[index][j],float(positions[index][j]),546,54);
 }
 void SteamFilterAudioProcessorEditor::drawStaticUI(juce::Graphics& g) {
+    // The original commissioned artwork remains the maritime surround/header.
+    // The instrument body is genuinely reconstructed below, not patched by
+    // little ivory rectangles over baked-in, unusable hardware.
     if(faceplate.isValid())
         g.drawImage(faceplate,0.f,0.f,baseWidth,baseHeight,0,0,faceplate.getWidth(),faceplate.getHeight());
-    else g.fillAll(juce::Colour(0xff282427));
+    else g.fillAll(juce::Colour(0xff241b17));
 
-    // The approved artwork contains baked-in obsolete labels and buttons.
-    // These four areas are now clean Victorian wallpaper, not dead controls.
-    auto cover=[&](juce::Rectangle<float> r) {
-        metal(g,r); wallpaper(g,r.reduced(7.f));
+    const auto pale=juce::Colour(0xfff1e4cd);
+    const auto shade=juce::Colour(0xffc8a879);
+    const auto luminous=juce::Colour(0xfffbd28c);
+    const auto black=juce::Colour(0xff19171a);
+    const auto copper=juce::Colour(0xff9a5b25);
+    auto engraving=[&](juce::Rectangle<float> r) {
+        g.setColour(juce::Colour(0xff23191a));
+        g.fillRoundedRectangle(r.expanded(3.f),9.f);
+        juce::ColourGradient rim(juce::Colour(0xfffcd37a),r.getX(),r.getY(),
+                                 juce::Colour(0xff713918),r.getRight(),r.getBottom(),false);
+        rim.addColour(.44,juce::Colour(0xffb77c36));
+        g.setGradientFill(rim);g.fillRoundedRectangle(r,8.f);
+        g.setColour(juce::Colour(0xff261b18));g.fillRoundedRectangle(r.reduced(4.f),6.f);
     };
-    cover({12.f,393.f,131.f,229.f}); // removed VOCAL/SPEECH/CUSTOM
-    cover({149.f,621.f,184.f,57.f}); // removed SteamSweep presets
-    cover({348.f,621.f,190.f,57.f}); // removed SteamBreath presets
-    cover({551.f,621.f,184.f,57.f}); // removed SteamGuard presets
-    cover({747.f,621.f,184.f,57.f}); // removed SteamSibil presets
-    cover({347.f,546.f,190.f,73.f}); // SteamBreath only needs its AMOUNT knob
-    letters(g,"AUTOMATIC BREATH DETECTION",352.f,566.f,180.f,24.f,12.f,ink,true);
-    cover({1163.f,785.f,286.f,122.f}); // removed LIMITS & SAFETY
+    auto face=[&](juce::Rectangle<float> r) {
+        engraving(r);
+        auto inner=r.reduced(7.f);
+        juce::ColourGradient enamel(juce::Colour(0xfffff1db),inner.getX(),inner.getY(),
+                                   juce::Colour(0xffd3b991),inner.getRight(),inner.getBottom(),false);
+        enamel.addColour(.46,juce::Colour(0xfff1e4ce));
+        g.setGradientFill(enamel);g.fillRoundedRectangle(inner,5.f);
+        wallpaper(g,inner.reduced(3.f));
+        g.setColour(juce::Colour(0x66ffffff));g.drawRoundedRectangle(inner.reduced(1.f),4.f,.8f);
+        g.setColour(juce::Colour(0x99654322));g.drawRoundedRectangle(inner.reduced(3.3f),3.f,.8f);
+    };
+    auto screw=[&](float x,float y) {
+        g.setColour(juce::Colour(0xff563722));g.fillEllipse(x-4.3f,y-4.3f,8.6f,8.6f);
+        g.setColour(juce::Colour(0xffe1b368));g.fillEllipse(x-3.4f,y-3.4f,6.8f,6.8f);
+        g.setColour(juce::Colour(0xff533d2f));g.drawLine(x-2.1f,y+1.1f,x+2.2f,y-1.5f,1.f);
+    };
+    auto brassPlate=[&](juce::Rectangle<float> r,juce::String text,float fontSize) {
+        juce::ColourGradient t(juce::Colour(0xff4c3630),r.getX(),r.getY(),
+                               juce::Colour(0xff11151a),r.getX(),r.getBottom(),false);
+        t.addColour(.52,juce::Colour(0xff25252a));
+        g.setGradientFill(t);g.fillRoundedRectangle(r,5.f);
+        g.setColour(juce::Colour(0xffdca253));g.drawRoundedRectangle(r.reduced(.6f),5.f,1.7f);
+        g.setColour(juce::Colour(0x99ffe3aa));g.drawHorizontalLine(int(r.getY()+2.f),r.getX()+12.f,r.getRight()-12.f);
+        letters(g,text,r.getX()+6.f,r.getY()+1.f,r.getWidth()-12.f,
+                r.getHeight()-2.f,fontSize,juce::Colour(0xfff8e5c9),true);
+    };
+    auto arcScale=[&](float cx,float cy,float radius,int ticks) {
+        for(int n=0;n<ticks;++n) {
+            const float ang=-2.35f+float(n)*4.7f/float(ticks-1);
+            const float ux=std::sin(ang),uy=-std::cos(ang);
+            const float s=(n==0 || n==ticks-1 || n==(ticks-1)/2)?7.f:4.f;
+            g.setColour(juce::Colour(0xff75582e));
+            g.drawLine(cx+radius*ux,cy+radius*uy,
+                       cx+(radius+s)*ux,cy+(radius+s)*uy,(n%2==0)?1.8f:1.f);
+        }
+    };
+    auto vDivider=[&](float x,float y,float height) {
+        g.setColour(juce::Colour(0x87552b14));
+        g.drawLine(x,y,x,y+height,1.f);
+        g.setColour(juce::Colour(0x88ffffd9));
+        g.drawLine(x+2,y,x+2,y+height,1.f);
+    };
 
+    // One unified steel enclosure; no exposed obsolete graphics.
+    engraving({115.f,317.f,1437.f,369.f});
+    const float panelsX[]={132.f,334.f,536.f,738.f,940.f,1142.f,1344.f};
+    const char* names[]={"SteamSweep","SteamBreath","SteamGuard","SteamSibil",
+                         "SteamRider","WhisperLift","SteamPolish"};
+    const char* captions[]={"MOUTH CLICKS / NOISE","BREATH CONTROL","PLOSIVE CONTROL",
+                            "SIBILANCE CONTROL","VOCAL LEVEL RIDER","UPWARD COMPRESSION",
+                            "VOCAL EQ / CHARACTER"};
+    const char* mainLabels[]={"REDUCTION","BREATH AMOUNT","REDUCTION",
+                              "REDUCTION","AMOUNT","LIFT","AMOUNT"};
+    const float mainX[]={190.f,389.f,592.f,793.f,989.f,1190.f,1385.f};
+    const char* littleLabels[][3]={
+        {"CLICK","RUMBLE","NOISE"},
+        {"","",""},
+        {"FREQ","HOLD","SENS"},
+        {"FREQ","WIDTH","SENS"},
+        {"TARGET","RANGE","SPEED"},
+        {"THRESH","RANGE","ATTACK"},
+        {"","",""}
+    };
+    const float littleX[][3]={
+        {147.f,209.f,272.f},{349.f,410.f,474.f},{552.f,617.f,682.f},
+        {748.f,811.f,870.f},{948.f,1010.f,1072.f},{1146.f,1210.f,1272.f},
+        {0.f,0.f,0.f}
+    };
+
+    for(int k=0;k<steam::kModuleCount;++k) {
+        const auto x=panelsX[k];
+        face({x,328.f,199.f,352.f});
+        brassPlate({x+7.f,334.f,185.f,43.f},"",15.f);
+        // The power button sits at x+14, clear of the engraved module name.
+        letters(g,names[k],x+47.f,339.f,145.f,31.f,21.f,luminous,true);
+        letters(g,captions[k],x+7.f,386.f,185.f,26.f,12.f,juce::Colour(0xff4d3322),true);
+        g.setColour(juce::Colour(0x88866337));
+        g.drawHorizontalLine(415,x+12.f,x+185.f);
+        const float cx=mainX[k]+51.f,cy=474.f;
+        arcScale(cx,cy,50.f,13);
+        letters(g,"0",cx-67.f,513.f,21.f,17.f,12.f,ink,true);
+        letters(g,"100",cx+44.f,513.f,35.f,17.f,12.f,ink,true);
+        letters(g,mainLabels[k],cx-72.f,530.f,144.f,17.f,13.f,juce::Colour(0xff4f3625),true);
+        // A small REAL gain-processing meter at the right of each main dial.
+        const float meterX[]={307.f,510.f,708.f,910.f,1110.f,1305.f,1502.f};
+        g.setColour(juce::Colour(0xff6c4826));
+        g.drawRoundedRectangle({meterX[k]-2.f,435.f,21.f,70.f},3.f,1.1f);
+        if(k==1) {
+            // Breath deliberately has ONE control. The vacant space is used
+            // as a clean etching, not a dead rectangle pretending to work.
+            g.setColour(juce::Colour(0x887f542b));
+            for(int i=0;i<3;++i) {
+                juce::Path breath;
+                const float by=571.f+float(i)*15.f;
+                breath.startNewSubPath(x+25.f,by);
+                breath.cubicTo(x+62.f,by-14.f,x+92.f,by+13.f,x+143.f,by-8.f);
+                g.strokePath(breath,juce::PathStrokeType(i==1?1.7f:1.f));
+            }
+            letters(g,"AUTOMATIC BREATH DETECTION",x+9.f,625.f,181.f,20.f,11.f,ink,true);
+        } else if(k<6) {
+            for(int j=0;j<3;++j) {
+                const float lx=littleX[k][j];
+                arcScale(lx+27.f,573.f,29.f,7);
+                letters(g,littleLabels[k][j],lx-6.f,611.f,66.f,19.f,11.f,ink,true);
+            }
+        } else {
+            letters(g,"CHARACTER",x+15.f,557.f,170.f,18.f,11.f,ink,true);
+            const char* pp[]={"WARM","PRESENCE","AIR"};
+            for(int j=0;j<3;++j) {
+                brassPlate({x+3.f+j*60.f,573.f,57.f,41.f},pp[j],j==1?10.f:12.f);
+            }
+        }
+        if(k==4 || k==5) {
+            brassPlate({x+14.f,631.f,170.f,35.f},k==4?"SIDECHAIN":"VOICE PROTECT",13.f);
+        } else if(k!=1) {
+            g.setColour(juce::Colour(0x88965d28));
+            g.drawHorizontalLine(650,x+22.f,x+175.f);
+            letters(g,k==0?"SURGICAL CLEANUP":k==2?"LOW-FREQUENCY GUARD":
+                      k==3?"SELECTIVE DE-ESSING":"HARMONIC FINISH",
+                      x+13.f,641.f,173.f,21.f,11.f,juce::Colour(0xff68472e),true);
+        }
+        screw(x+12.f,340.f);screw(x+186.f,340.f);
+        screw(x+12.f,667.f);screw(x+186.f,667.f);
+        if(k<6)vDivider(x+197.f,395.f,256.f);
+    }
+
+    // MODE has been removed. The left edge is now ornate enclosure engraving.
+    face({9.f,354.f,113.f,330.f});
+    g.setColour(juce::Colour(0xff876336));
+    for(int i=0;i<7;++i) {
+        const float y=380.f+float(i)*44.f;
+        juce::Path flourish;
+        flourish.startNewSubPath(29.f,y);
+        flourish.cubicTo(58.f,y-20.f,75.f,y+20.f,106.f,y);
+        g.strokePath(flourish,juce::PathStrokeType(1.2f));
+    }
+    screw(22.f,368.f);screw(108.f,368.f);
+    screw(22.f,672.f);screw(108.f,672.f);
+
+    // Central signal-flow plaque, full-width riveted machinery.
+    engraving({165.f,690.f,1305.f,82.f});
+    brassPlate({179.f,699.f,1277.f,27.f},"OPTIMIZED PROCESSING CHAIN",16.f);
+    auto strip=juce::Rectangle<float>(189.f,730.f,1254.f,32.f);
+    juce::ColourGradient chain(juce::Colour(0xff12191f),strip.getX(),strip.getY(),
+                               juce::Colour(0xff282526),strip.getRight(),strip.getBottom(),false);
+    g.setGradientFill(chain);g.fillRoundedRectangle(strip,5.f);
+    g.setColour(juce::Colour(0xffcb8e44));g.drawRoundedRectangle(strip,5.f,1.6f);
+    const char* route[]={"INPUT","Guard","Sweep","Breath","Sibil","Rider","Lift","Polish","OUTPUT"};
+    const float routeX[]={203.f,347.f,482.f,614.f,759.f,887.f,1019.f,1165.f,1326.f};
+    for(int k=0;k<9;++k) {
+        letters(g,route[k],routeX[k],734.f,k==8?105.f:113.f,23.f,14.f,ivory,true);
+        if(k<8) {
+            g.setColour(juce::Colour(0xffffa143));
+            juce::Path chevron;
+            chevron.startNewSubPath(routeX[k]+119.f,739.f);
+            chevron.lineTo(routeX[k]+127.f,744.f);
+            chevron.lineTo(routeX[k]+119.f,751.f);
+            g.strokePath(chevron,juce::PathStrokeType(1.8f));
+        }
+    }
+
+    // Three functional footer groups. The released fourth group is tasteful
+    // artwork, NOT a fake control and NOT a blank patch rectangle.
+    struct Foot {float x,w;const char* name;};
+    const Foot foot[]={{176.f,328.f,"GLOBAL"},{511.f,338.f,"DETECTION & RESPONSE"},
+                       {856.f,285.f,"A / B  GAIN MATCHED"}};
+    for(const auto& f:foot) {
+        face({f.x,784.f,f.w,131.f});
+        brassPlate({f.x+8.f,789.f,f.w-16.f,30.f},f.name,14.f);
+        screw(f.x+14.f,900.f);screw(f.x+f.w-14.f,900.f);
+    }
+    const struct {const char* name;float x;} global[]={
+        {"INPUT TRIM",254.f},{"MAX GAIN",345.f},{"MIX",425.f}};
+    const struct {const char* name;float x;} det[]={
+        {"SENSITIVITY",557.f},{"LOOKAHEAD",650.f},{"SMOOTHING",757.f}};
+    for(const auto& v:global) {
+        arcScale(v.x+27.f,835.f,30.f,7);
+        letters(g,v.name,v.x-20.f,870.f,95.f,21.f,11.f,ink,true);
+    }
+    for(const auto& v:det) {
+        arcScale(v.x+27.f,835.f,30.f,7);
+        letters(g,v.name,v.x-22.f,870.f,99.f,21.f,11.f,ink,true);
+    }
+    for(int i=0;i<4;++i)screw(870.f+float(i)*86.f,905.f);
+    brassPlate({890.f,827.f,61.f,43.f},"A",17.f);
+    brassPlate({954.f,827.f,58.f,43.f},"B",17.f);
+    brassPlate({1011.f,827.f,58.f,43.f},"MATCH",12.f);
+
+    // A compass-like ornament fills the space liberated by LIMITS & SAFETY.
+    // No extra processor or unexplained button is added.
+    face({1149.f,784.f,309.f,131.f});
+    brassPlate({1159.f,790.f,288.f,29.f},"ThomC  •  VOCAL REFINEMENT",14.f);
+    const float compassX=1303.f,compassY=867.f;
+    g.setColour(juce::Colour(0x995b3b24));
+    g.drawEllipse(compassX-31.f,compassY-31.f,62.f,62.f,1.4f);
+    g.drawEllipse(compassX-25.f,compassY-25.f,50.f,50.f,.8f);
+    for(int k=0;k<8;++k) {
+        const float a=float(k)*pi/4.f;
+        const float dx=std::cos(a),dy=std::sin(a);
+        g.drawLine(compassX+dx*19.f,compassY+dy*19.f,
+                   compassX+dx*28.f,compassY+dy*28.f,1.f);
+    }
+    juce::Path needle;
+    needle.startNewSubPath(compassX,compassY-19.f);
+    needle.lineTo(compassX+6.f,compassY+2.f);
+    needle.lineTo(compassX,compassY+19.f);
+    needle.lineTo(compassX-6.f,compassY-2.f);needle.closeSubPath();
+    g.setColour(juce::Colour(0xffa9652b));g.fillPath(needle);
+    g.setColour(juce::Colour(0xffefe0bc));g.fillEllipse(compassX-3.f,compassY-3.f,6.f,6.f);
+    screw(1166.f,901.f);screw(1442.f,901.f);
 }
 void SteamFilterAudioProcessorEditor::paint(juce::Graphics& g) {
     juce::Graphics::ScopedSaveState guard(g);
@@ -266,6 +490,7 @@ void SteamFilterAudioProcessorEditor::resized() {
 }
 
 void SteamFilterAudioProcessorEditor::timerCallback() {
+    if(shuttingDown)return;
     steam::Recommendation suggestion;
     if(processor.getRecommendation(suggestion)){
         currentSuggestion=suggestion;
@@ -309,7 +534,7 @@ void SteamFilterAudioProcessorEditor::WaveView::paint(juce::Graphics& g) {
         float peak,riderDb,liftDb;unsigned events;
         steam::Engine::unpackWave(packed,peak,riderDb,events,liftDb);
         const float x=float(i)*dx;
-        const float height=std::min(peak,1.f)*middle*.85f;
+        const float height=std::pow(juce::jlimit(0.f,1.f,peak),.62f)*middle*.83f;
         g.setColour(juce::Colour(0xffe9c995).withAlpha(.35f+peak*.6f));
         g.drawVerticalLine(juce::roundToInt(x),middle-height,middle+height);
         if(events!=0){
@@ -419,7 +644,7 @@ void SteamFilterAudioProcessorEditor::showPresets(){
     m.addSeparator();m.addItem(4,"Save preset...");m.addItem(5,"Load preset...");
     juce::Component::SafePointer<SteamFilterAudioProcessorEditor> safe(this);
     m.showMenuAsync(juce::PopupMenu::Options(),[safe](int result){
-        if(safe==nullptr)return;
+        if(safe==nullptr || safe->shuttingDown)return;
         if(result>=1 && result<=3)safe->processor.selectFactoryPreset(result-1);
         else if(result==4)safe->savePreset();else if(result==5)safe->loadPreset();
     });
@@ -428,7 +653,7 @@ void SteamFilterAudioProcessorEditor::savePreset(){
     fileChooser=std::make_unique<juce::FileChooser>("Save SteamFilter preset",juce::File{},"*.steamfilter");
     fileChooser->launchAsync(juce::FileBrowserComponent::saveMode|juce::FileBrowserComponent::canSelectFiles,
         [safe=juce::Component::SafePointer<SteamFilterAudioProcessorEditor>(this)](const juce::FileChooser& f){
-            if (safe == nullptr) return;
+            if (safe == nullptr || safe->shuttingDown) return;
             auto file=f.getResult();if(file==juce::File{})return;
             if(file.getFileExtension()!=".steamfilter")file=file.withFileExtension(".steamfilter");
             auto xml=safe->processor.state.copyState().createXml();
@@ -439,7 +664,7 @@ void SteamFilterAudioProcessorEditor::loadPreset(){
     fileChooser=std::make_unique<juce::FileChooser>("Load SteamFilter preset",juce::File{},"*.steamfilter");
     fileChooser->launchAsync(juce::FileBrowserComponent::openMode|juce::FileBrowserComponent::canSelectFiles,
         [safe=juce::Component::SafePointer<SteamFilterAudioProcessorEditor>(this)](const juce::FileChooser& f){
-            if (safe == nullptr) return;
+            if (safe == nullptr || safe->shuttingDown) return;
             auto file=f.getResult();if(file==juce::File{})return;
             auto xml=juce::XmlDocument::parse(file);
             if(xml){auto tree=juce::ValueTree::fromXml(*xml);
