@@ -60,5 +60,57 @@ jobs:
           path: staging/
           if-no-files-found: error
           retention-days: 30
-      # Test artifact only. No GitHub release or public installer is published.
+      # Actions test artifact remains available as an engineering trace.
       # Cubase/pluginval and real-vocal listening validation still required.
+
+  preview-release:
+    name: Publish unsigned preview with SHA-256 checksum
+    needs: vst3-compile
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && startsWith(github.event.head_commit.message, 'Publish verified Windows preview') }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Check out release documentation
+        uses: actions/checkout@v4
+      - name: Download compiled VST3 from successful Windows validation
+        uses: actions/download-artifact@v4
+        with:
+          name: SteamFilter-Windows-VST3-TEST
+          path: dist/
+      - name: Verify VST3 bundle and prepare checksummed ZIP
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -d dist/SteamFilter.vst3/Contents
+          module="$(find dist/SteamFilter.vst3/Contents -type f -name 'SteamFilter.vst3' -print -quit)"
+          if [ -z "$module" ]; then
+            echo 'No actual Windows VST3 binary found inside the bundle' >&2
+            exit 1
+          fi
+          file "$module"
+          if ! file "$module" | grep -q 'PE32+'; then
+            echo 'Expected a Windows 64-bit PE binary' >&2
+            exit 1
+          fi
+          (cd dist && zip -q -r ../SteamFilter-Win64-PREVIEW.zip SteamFilter.vst3)
+          unzip -tqq SteamFilter-Win64-PREVIEW.zip
+          sha256sum SteamFilter-Win64-PREVIEW.zip > SHA256SUMS.txt
+          echo "### SteamFilter preview: checksummed, UNSIGNED Windows VST3" >> "$GITHUB_STEP_SUMMARY"
+          echo 'The successful workflow is a compilation and automated-DSP check, not malware or Cubase certification.' >> "$GITHUB_STEP_SUMMARY"
+          cat SHA256SUMS.txt >> "$GITHUB_STEP_SUMMARY"
+      - name: Publish GitHub prerelease (not production-certified)
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          tag="v0.2.0-preview.${GITHUB_RUN_NUMBER}"
+          gh release create "$tag" SteamFilter-Win64-PREVIEW.zip SHA256SUMS.txt \
+            --target "$GITHUB_SHA" \
+            --title "SteamFilter v0.2.0 preview (UNSIGNED, test only)" \
+            --notes-file Documentation/PreviewReleaseNotes.md \
+            --prerelease --latest=false
+          echo "### GitHub prerelease" >> "$GITHUB_STEP_SUMMARY"
+          gh release view "$tag" --json url --jq .url >> "$GITHUB_STEP_SUMMARY"

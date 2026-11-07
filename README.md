@@ -30,6 +30,13 @@ CMake automatically retrieves JUCE **9.0.4** when network is available. Alternat
 
 Only `Assets/MaritimeHeader.jpg` is a static decorative asset from the approved nautical concept; all knobs, buttons, meters, waveform and processing indicators are live JUCE components. No animated PNG/GIF sprite hacks; knobs physically rotate by procedural painting when values change. Slider labels and numerical readouts live on the faceplates, not on knob surfaces.
 
+
+### Preview downloads and browser safety
+
+Unsigned experimental Windows binaries are distributed as a **GitHub prerelease** on the repository's Releases page, with a `SHA256SUMS.txt` checksum. The build must pass the Windows VST3 compiler job and both platform DSP test suites first. Release downloads may still trigger Chrome Safe Browsing or Windows reputation warnings: a fresh ZIP and unsigned VST3 have no established reputation, and checksums prove file integrity, **not** malware safety. Never turn off browser security solely to install this plugin. Do not treat a CI pass as Cubase or real-world vocal-restoration certification.
+
+For genuine trusted distribution, obtain a recognized code-signing identity and sign the VST3 binaries before creating the ZIP; verify the signatures and retest the resulting package.
+
 ### Licensing
 
 Copyright © 2026 ThomC. All rights reserved. Not licensed for third-party redistribution. JUCE is available under its own dual licensing terms; review commercial licensing **before distributing** proprietary VST3 releases. No external ML libraries or commercial audio models are bundled.
