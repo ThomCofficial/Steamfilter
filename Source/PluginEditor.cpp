@@ -236,7 +236,7 @@ void SteamFilterAudioProcessorEditor::paint(juce::Graphics& g) {
     drawStaticUI(g);
     if(analysisStatus.isNotEmpty() && (analysisStatus.startsWith("Listening") ||
         analysisStatus.startsWith("Capturing") || analysisStatus.startsWith("Ready") ||
-        analysisStatus.startsWith("No usable") || analysisStatus.startsWith("Suggestions")) {
+        analysisStatus.startsWith("No usable") || analysisStatus.startsWith("Suggestions"))) {
         g.setColour(juce::Colour(0xff251e1a));g.fillRoundedRectangle(1252.f,315.f,200.f,18.f,3.f);
         letters(g,analysisStatus,1254,315,195,17,11,juce::Colour(0xfff7d995),true);
     }
