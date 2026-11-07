@@ -17,6 +17,16 @@ int main() {
             std::unique_ptr<juce::AudioProcessorEditor> ui(plugin->createEditor());
             if(!ui || ui->getWidth()<=0 || ui->getHeight()<=0) return 10;
             ui->setSize(1505,847);
+            if(attempt==0) {
+                // A real JUCE render captured from the actual live editor, not
+                // an illustration or a mockup. Keeps the visual state auditable.
+                const auto image=ui->createComponentSnapshot(ui->getLocalBounds());
+                if(!image.isValid()) return 20;
+                juce::PNGImageFormat png;
+                juce::FileOutputStream out(juce::File::getCurrentWorkingDirectory()
+                    .getChildFile("SteamFilter-UI-PREVIEW.png"));
+                if(!out.openedOk() || !png.writeImageToStream(image,out))return 21;
+            }
             // Exercise parameter callbacks and UI teardown around active audio.
             for(int b=0;b<14;++b) {
                 for(int c=0;c<2;++c) {

@@ -38,6 +38,13 @@ jobs:
         run: |
           cmake --build build/win --config Release --target SteamDSPStress SteamDSPModules --parallel 4
           ctest --test-dir build/win -C Release --output-on-failure
+      - name: Upload rendered JUCE UI preview
+        uses: actions/upload-artifact@v4
+        with:
+          name: SteamFilter-UI-REAL-RENDER
+          path: build/win/SteamFilter-UI-PREVIEW.png
+          if-no-files-found: error
+          retention-days: 30
       - name: Ensure an actual plugin bundle was produced
         shell: pwsh
         run: |
