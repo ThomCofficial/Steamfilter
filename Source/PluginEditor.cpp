@@ -119,8 +119,9 @@ SteamFilterAudioProcessorEditor::SteamFilterAudioProcessorEditor(SteamFilterAudi
           "Plosive reduction: "+juce::String(currentSuggestion.plosiveReductionDb,1)+" dB\n"+
           "De-esser reduction: "+juce::String(currentSuggestion.sibilReductionDb,1)+" dB\n"+
           "Rider target: "+juce::String(currentSuggestion.riderTargetDb,1)+" dB";
+        auto safe = juce::Component::SafePointer<SteamFilterAudioProcessorEditor>(this);
         juce::AlertWindow::showOkCancelBox(juce::AlertWindow::QuestionIcon,"SteamFilter analysis",msg,"Apply","Cancel",this,
-           juce::ModalCallbackFunction::create([safe=juce::Component::SafePointer<SteamFilterAudioProcessorEditor>(this)](int result){
+           juce::ModalCallbackFunction::create([safe](int result){
               if(safe!=nullptr && result!=0 && safe->suggestionAvailable){safe->processor.applyRecommendation(safe->currentSuggestion);
                   safe->analysisStatus="Suggestions applied";safe->suggestionAvailable=false;
                   if(safe->suggestButton)safe->suggestButton->setEnabled(false);}
