@@ -41,6 +41,24 @@ jobs:
         run: |
           $bundles = Get-ChildItem -Path build/win -Filter "SteamFilter.vst3" -Recurse
           if ($bundles.Count -eq 0) { throw "VST3 bundle not produced" }
-      # Intentionally NO artifact upload or release step.
-      # A usable installer/release requires Cubase, pluginval, real vocals,
-      # and approval after manual verification.
+      - name: Stage compiled Windows VST3 test bundle
+        shell: pwsh
+        run: |
+          $bundle = Get-ChildItem -Path build/win -Filter "SteamFilter.vst3" -Directory -Recurse |
+            Where-Object { $_.FullName -match "SteamFilter_artefacts" } |
+            Select-Object -First 1
+          if ($null -eq $bundle) { throw "VST3 bundle directory not found" }
+          New-Item -ItemType Directory -Path "staging" -Force | Out-Null
+          Copy-Item -LiteralPath $bundle.FullName -Destination "staging/SteamFilter.vst3" -Recurse -Force
+          if (-not (Test-Path "staging/SteamFilter.vst3/Contents")) {
+            throw "Incomplete VST3 bundle: missing Contents directory"
+          }
+      - name: Upload Windows VST3 test bundle (not a release)
+        uses: actions/upload-artifact@v4
+        with:
+          name: SteamFilter-Windows-VST3-TEST
+          path: staging/
+          if-no-files-found: error
+          retention-days: 30
+      # Test artifact only. No GitHub release or public installer is published.
+      # Cubase/pluginval and real-vocal listening validation still required.
