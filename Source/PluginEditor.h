@@ -50,14 +50,14 @@ private:
         void paint(juce::Graphics&) override;
         void timerCallback() override;
     };
-    struct KnobInfo {juce::Slider* slider=nullptr;juce::Label* display=nullptr;juce::Rectangle<float> r;};
+    struct KnobInfo {juce::Slider* slider=nullptr;juce::Rectangle<float> r;};
     struct ButtonInfo {juce::Button* button=nullptr;juce::Rectangle<float> r;};
     SteamFilterAudioProcessor& processor;
     BrassLookAndFeel theme;
-    juce::Image header;
+    juce::Image faceplate;
     std::vector<std::unique_ptr<juce::Slider>> knobs;
     std::vector<std::unique_ptr<SteamFilterAudioProcessor::APVTS::SliderAttachment>> knobsBind;
-    std::vector<std::unique_ptr<juce::Label>> valueLabels;
+    // All legends and scales are painted on the approved engraved faceplate.
     std::vector<KnobInfo> knobRects;
     std::vector<std::unique_ptr<juce::TextButton>> textButtons;
     std::vector<std::unique_ptr<juce::ToggleButton>> toggleButtons;
@@ -78,6 +78,8 @@ private:
     juce::TextButton* sidechainButton=nullptr;
     juce::TextButton* voiceProtectButton=nullptr;
     std::array<juce::TextButton*,3> polishButtons{};
+    std::array<std::array<juce::TextButton*,3>,4> modes{};
+    std::array<juce::TextButton*,3> factoryButtons{};
     bool suggestionAvailable=false;
     steam::Recommendation currentSuggestion{};
     juce::String analysisStatus="Play audio, then analyse";
@@ -88,7 +90,6 @@ private:
     juce::TextButton* addTextButton(const juce::String& text,float x,float y,float w,float h,std::function<void()> fn);
     juce::ToggleButton* addToggle(const char* id,float x,float y,float size);
     void addPanel(int index);
-    void drawFrame(juce::Graphics&,juce::Rectangle<float>,const juce::String&,bool headerPlate=true);
     void drawStaticUI(juce::Graphics&);
     void showPresets();
     void savePreset();

@@ -28,7 +28,7 @@
 
 ## Analyse
 
-- Click ANALYSE while Cubase plays representative audio for 10 seconds.
+- Click ANALYSE while Cubase plays representative audio for 4 seconds.
 - Analysis captures *statistics* only (no audio file, no network, no retained recording).
 - UI presents recommendations separately, **never modifies a session without explicit Apply**.
 - A no-voice/silence capture is rejected.
@@ -37,7 +37,7 @@
 ## Reliability and CPU policy
 
 - DSP core has no audio-thread allocations, mutex locks, dynamic FFTs, remote calls, sample downloads or oversampling.
-- Fixed 4 ms lookahead delay is reported to the host for latency compensation, and is also maintained through internal bypass.
+- Fixed 20 ms lookahead delay is reported to the host for latency compensation, and is also maintained through internal bypass.
 - Sample rates 8–384 kHz are accepted by the standalone engine; 44.1 / 48 / 96 / 192 kHz are primary host targets.
 - Denormal suppression, parameter gain smoothing, coefficient interpolation, output safety ceilings, finite-value checking.
 - A/B banks saved within plugin state; separate user presets are XML value trees.

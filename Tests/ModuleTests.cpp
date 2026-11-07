@@ -95,14 +95,19 @@ void mouthClickLookahead(){
     };
     const double dry=clickPeak(false),processed=clickPeak(true);
     std::cout<<"SteamSweep click test: peak "<<dry<<" → "<<processed<<"\n";
-    expect(processed<dry*.6,"4ms-lookahead click attenuation significantly lowers isolated spike");
+    expect(processed<dry*.6,"lookahead click attenuation significantly lowers isolated spike");
 }
 void lookaheadLatency(){
     Tester t;t.config.bypass=true;
-    expect(t.engine.latencySamples()==192,"lookahead exactly 4ms at 48k");
-    for(int b=0;b<4;++b){std::fill(std::begin(t.data),std::end(t.data),0.f);if(b==0)t.data[0]=.45f;
-       t.run();if(b==0)expect(std::abs(t.data[192]-.45f)<.003,"host-compensated bypass preserves delayed impulse");
+    expect(t.engine.latencySamples()==960,"constant maximum lookahead exactly 20ms at 48k");
+    float max=0;int where=-1;
+    for(int b=0;b<8;++b){
+        std::fill(std::begin(t.data),std::end(t.data),0.f);
+        if(b==0)t.data[0]=.45f;
+        t.run();
+        for(int i=0;i<256;++i)if(std::abs(t.data[i])>max){max=std::abs(t.data[i]);where=b*256+i;}
     }
+    expect(where==960 && std::abs(max-.45f)<.003f,"host-compensated bypass preserves delayed impulse");
 }
 void silentAnalysisRefusal(){
     Tester t;t.engine.requestAnalysis();
@@ -116,4 +121,50 @@ void allBypassedDelta(){
     for(int k=0;k<80;++k){std::fill(std::begin(t.data),std::end(t.data),.05f);t.run();}
     for(auto x:t.data)expect(std::abs(x)<.005f,"delta monitor emits near-zero when no stage is active");
 }
-int main(){moduleSpectra();breathSynthetic();sibilanceSynthetic();dynamics();polish();guardTransient();mouthClickLookahead();lookaheadLatency();silentAnalysisRefusal();allBypassedDelta();std::cout<<"All module behavior tests passed\n";}
+
+void globalBlendIsTrueDry() {
+    Tester t;t.config.enabled.fill(true);t.config.globalMix=0.f;
+    t.config.inputDb=12.f;t.config.outputDb=-5.f;t.config.polishAmount=1.f;
+    float maximumError=0.f;
+    for(int block=0;block<160;++block){
+        for(int i=0;i<256;++i)t.data[i]=.06f*std::sin(2.f*pi*197.f*(block*256+i)/48000.f);
+        t.run();
+        if(block>80)for(int i=0;i<256;++i){
+            const int source=block*256+i-t.engine.latencySamples();
+            const float expected=.06f*std::sin(2.f*pi*197.f*source/48000.f);
+            maximumError=std::max(maximumError,std::abs(t.data[i]-expected));
+        }
+    }
+    expect(maximumError<.002f,"global 0% blend must pass the delayed original unchanged");
+}
+void makeupCapAndAnalysis() {
+    Tester t;t.config.enabled.fill(false);t.config.enabled[steam::Rider]=true;
+    t.config.enabled[steam::Lift]=true;t.config.riderAmount=1.f;
+    t.config.riderTargetDb=-15.f;t.config.riderRangeDb=12.f;
+    t.config.liftStrength=1.f;t.config.liftThresholdDb=-15.f;
+    t.config.liftMaxDb=12.f;t.config.maxGainDb=3.f;
+    float peak=0;
+    for(int block=0;block<340;++block){
+        for(int i=0;i<256;++i)t.data[i]=.016f*std::sin(2.f*pi*195.f*(block*256+i)/48000.f);
+        t.run();if(block>220)for(auto x:t.data)peak=std::max(peak,std::abs(x));
+    }
+    expect(peak<.016f*dbToGain(3.f)*1.07f,"rider plus lift must honour global makeup cap");
+    t.engine.requestAnalysis();
+    for(int k=0;k<810;++k){for(int i=0;i<256;++i)t.data[i]=.12f*std::sin(2.f*pi*200.f*(k*256+i)/48000.f);t.run();}
+    Recommendation result;expect(t.engine.takeRecommendation(result),"4-second analysis produced a suggestion");
+    expect(result.confidence>.12f,"analysis accepts voiced test tone");
+}
+void lookaheadAndSmoothingAutomation() {
+    Tester t;t.config.enabled.fill(true);t.config.inputDb=0;t.config.outputDb=0;
+    float prev=0, largestJump=0;
+    for(int block=0;block<1400;++block){
+        t.config.lookaheadMs=(block%3==0)?0.f:(block%3==1?2.f:4.f);
+        t.config.smoothing=(block%7)/6.f;
+        t.config.detectorSensitivity=(block%9)/8.f;
+        for(int i=0;i<256;++i)t.data[i]=.035f*std::sin(2.f*pi*310.f*(block*256+i)/48000.f);
+        t.run();
+        for(float x:t.data){largestJump=std::max(largestJump,std::abs(x-prev));prev=x;}
+    }
+    expect(largestJump<.2f,"lookahead and smoothing changes remain bounded");
+}
+int main(){globalBlendIsTrueDry();makeupCapAndAnalysis();lookaheadAndSmoothingAutomation();moduleSpectra();breathSynthetic();sibilanceSynthetic();dynamics();polish();guardTransient();mouthClickLookahead();lookaheadLatency();silentAnalysisRefusal();allBypassedDelta();std::cout<<"All module behavior tests passed\n";}

@@ -8,7 +8,7 @@
 - Full live JUCE interface source: brushed steel/cream steampunk styling, cropped maritime header artwork, independently moving vector rotary knobs, genuine value readouts on faceplate, independently controllable and bypassable modules.
 - Seven per-module before/after dB processing meters; stereo-linked input/output level meters; live waveform with multicolour event classification and distinct SteamRider/WhisperLift gain curves; measured DSP-cycle-use indicator.
 - Ten-second streaming vocal analysis with suggested changes that require explicit approval. Silent/unusable input is rejected by the UI.
-- Fixed 4 ms lookahead compensated through the VST3 latency API, smooth bypass and automation, real-time-safe DSP without heap allocations in the engine's process call.
+- Fixed 20 ms lookahead compensated through the VST3 latency API, smooth bypass and automation, real-time-safe DSP without heap allocations in the engine's process call.
 - Optional audio sidechain for SteamRider, global gain match, A/B state save/restore, delta audition, factory and user presets.
 - Automated C++ DSP tests and GitHub Actions workflow for future Windows builds and tests.
 

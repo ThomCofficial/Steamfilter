@@ -20,6 +20,7 @@ struct Settings {
     std::array<bool, kModuleCount> enabled{{true,true,true,true,true,true,true}};
     bool bypass = false, delta = false, gainMatch = false;
     float inputDb = 0, outputDb = 0;
+    float globalMix=1, maxGainDb=12, detectorSensitivity=.5f, lookaheadMs=4, smoothing=.5f;
     float sweepAmount = .55f, rumbleHz = 65, clickStrength = .20f, noiseReductionDb = 6;
     float breathSensitivity = .54f, breathReductionDb = 9, breathLength = .5f, breathPreserve = .3f;
     float plosiveSensitivity = .50f, plosiveReductionDb = 11, plosiveHoldMs = 45, plosiveFrequency = 200;
@@ -104,9 +105,11 @@ private:
     int activeChannels=2, maximumBlock=512;
     std::array<Channel,2> ch;
     // Fixed 4ms lookahead buffers for pre-emptive click/plosive attenuation.
-    static constexpr int delayCapacity=4096;
+    static constexpr int delayCapacity=16384;
     std::array<std::array<float,delayCapacity>,2> delay{};
     int delayWrite=0, lookaheadSamples=176;
+    struct DetectorGains {float breath=1,plosive=1,sibil=1,click=1,noise=1;};
+    std::array<DetectorGains,delayCapacity> controlDelay{};
     // Detector one-pole filters + their 15ms and 65ms feature envelopes.
     std::array<float,5> detectorLp{};
     std::array<float,5> eFast{}, eSlow{};

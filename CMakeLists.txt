@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(SteamFilter VERSION 0.1.0 LANGUAGES C CXX)
+project(SteamFilter VERSION 0.2.0 LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 include(CTest)
@@ -40,7 +40,7 @@ if(STEAMFILTER_BUILD_PLUGIN)
     IS_MIDI_EFFECT FALSE
     EDITOR_WANTS_KEYBOARD_FOCUS FALSE
     COPY_PLUGIN_AFTER_BUILD FALSE)
-  juce_add_binary_data(SteamFilterArt SOURCES Assets/MaritimeHeader.jpg)
+  juce_add_binary_data(SteamFilterArt SOURCES Assets/ApprovedFaceplate.jpg Assets/KnobMain.png Assets/KnobMini.png Assets/GaugeFace.png)
   target_sources(SteamFilter PRIVATE Source/PluginProcessor.cpp Source/PluginEditor.cpp)
   target_link_libraries(SteamFilter PRIVATE SteamDSP SteamFilterArt juce::juce_audio_utils juce::juce_dsp juce::juce_gui_extra)
   target_compile_definitions(SteamFilter PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_VST3_CAN_REPLACE_VST2=0)

@@ -25,6 +25,11 @@ SteamFilterAudioProcessor::APVTS::ParameterLayout SteamFilterAudioProcessor::cre
     std::vector<std::unique_ptr<juce::RangedAudioParameter>> p;
     pushFloat(p,"input","Input (dB)",-24,24,0,.01f);
     pushFloat(p,"output","Output (dB)",-24,24,0,.01f);
+    pushFloat(p,"globalMix","Global parallel mix",0,1,1.f,.005f);
+    pushFloat(p,"maxGain","Combined maximum makeup gain (dB)",0,12,12.f,.1f);
+    pushFloat(p,"detectorSensitivity","Overall detector sensitivity",0,1,.5f,.01f);
+    pushFloat(p,"lookahead","Transient detector lookahead (ms)",0,20,4.f,.1f);
+    pushFloat(p,"smoothing","Global detector smoothing",0,1,.5f,.01f);
     pushBool(p,"bypass","Global bypass",false);
     pushBool(p,"delta","Monitor removed signal",false);
     pushBool(p,"gainMatch","Automatic level match",false);
@@ -64,7 +69,7 @@ SteamFilterAudioProcessor::APVTS::ParameterLayout SteamFilterAudioProcessor::cre
     p.push_back(std::make_unique<juce::AudioParameterChoice>(juce::ParameterID{"polishMode",1},"SteamPolish character",
         juce::StringArray{"Warm","Presence","Air"},0));
     pushFloat(p,"polishAmount","SteamPolish amount",0,1,.34f);
-    return APVTS::ParameterLayout(p.begin(), p.end());
+    return APVTS::ParameterLayout(p.begin(),p.end());
 }
 
 bool SteamFilterAudioProcessor::isBusesLayoutSupported(const BusesLayout& l) const {
@@ -101,6 +106,9 @@ void SteamFilterAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
     }
     steam::Settings p;
     p.inputDb=value("input");p.outputDb=value("output");p.bypass=value("bypass")>.5f;
+    p.globalMix=value("globalMix");p.maxGainDb=value("maxGain");
+    p.detectorSensitivity=value("detectorSensitivity");p.lookaheadMs=value("lookahead");
+    p.smoothing=value("smoothing");
     p.delta=value("delta")>.5f;p.gainMatch=value("gainMatch")>.5f;
     constexpr const char* switches[]={"sweepOn","breathOn","guardOn","sibilOn","riderOn","liftOn","polishOn"};
     for(int k=0;k<steam::kModuleCount;++k)p.enabled[k]=value(switches[k])>.5f;

@@ -51,7 +51,7 @@ void Engine::prepare(double sampleRate,int maxBlock,int channels) {
     fs=clamp(sampleRate,8000.,384000.);
     maximumBlock=std::max(1,maxBlock);
     activeChannels=clamp(channels,1,2);
-    lookaheadSamples=clamp(int(fs*.004),1,delayCapacity-1);
+    lookaheadSamples=clamp(int(fs*.020),1,delayCapacity-1);
     reset();
     constexpr float frequencies[]={150.f,450.f,1600.f,4500.f,9000.f};
     for(int i=0;i<5;++i)detectorAlpha[i]=poleAlpha(frequencies[i],float(fs));
@@ -61,6 +61,7 @@ void Engine::prepare(double sampleRate,int maxBlock,int channels) {
 void Engine::reset() {
     for(auto& c:ch) c=Channel{};
     for(auto& a:delay)a.fill(0);
+    controlDelay.fill(DetectorGains{});
     delayWrite=0;
     detectorLp.fill(0);eFast.fill(0);eSlow.fill(0);
     moduleMix.fill(1.f);moduleMixInitialized=false;
@@ -108,17 +109,18 @@ void Engine::updateDetectors(const Settings& s) {
     const float broadband=lo+body+presence+hiss+1.e-7f;
     const float db=gainToDb(rmsEnv);
     // Sibilance: relatively strong sustained HF above ~4.5k; suppress short clicks.
-    const bool hissStrong=(hiss>(body+lo)*(.65f-.28f*s.sibilSensitivity)) &&
+    const float commonThreshold=1.18f-.36f*clamp(s.detectorSensitivity,0.f,1.f);
+    const bool hissStrong=(hiss>(body+lo)*(.65f-.28f*s.sibilSensitivity)*commonThreshold) &&
                           (hiss>presence*1.0f) && hiss>.0007f && db>-58.f;
     // Plosives: transient low-frequency energy dominates the vocal bands.
-    const bool bassBurst=(lo > std::max(0.003f,eSlow[0])* (2.8f-1.5f*s.plosiveSensitivity)) &&
+    const bool bassBurst=(lo > std::max(0.003f,eSlow[0])* (2.8f-1.5f*s.plosiveSensitivity)*commonThreshold) &&
                           lo>(body+presence)*(.7f-.3f*s.plosiveSensitivity) && db>-52.f;
     // Broadband click candidate: exceptionally brief high-band transient;
     // the safety cap prevents aggressive mutation of ordinary consonants.
     const bool click=(hiss>std::max(.0005f,eSlow[4])*(8.f-3.f*s.clickStrength)) &&
                      hiss>.004f && db>-60.f;
     // Breath classification requires sustained, low-mid-poor noise, excludes sibilants/plosives.
-    const bool noiseLike=(hiss+presence) > (body+lo)*(.78f-.33f*s.breathSensitivity) &&
+    const bool noiseLike=(hiss+presence) > (body+lo)*(.78f-.33f*s.breathSensitivity)*commonThreshold &&
                          !hissStrong && !bassBurst && db>-56.f;
     breathCount=noiseLike?std::min(breathCount+1,12):std::max(0,breathCount-(s.breathLength>.5f?1:2));
     if(bassBurst) popHold=int(fs*clamp(s.plosiveHoldMs,10.f,150.f)*.001f/64.f)+1;
@@ -261,12 +263,14 @@ void Engine::process(float* const* audio,const float* const* sidechain,int chann
         }
         for(int k=0;k<kModuleCount;++k)
             moduleMix[k]=smooth(moduleMix[k],s.enabled[k]?1.f:0.f,.006f,sr);
-        // Conservative continuous gain smoothing; avoids CPU-spiky discontinuities.
-        breathGain=smooth(breathGain,lastBreathTarget,.015f,sr);
-        plosiveGain=smooth(plosiveGain,lastPlosiveTarget,.006f,sr);
-        clickGain=smooth(clickGain,lastClickTarget,.001f,sr);
-        sibilGain=smooth(sibilGain,lastSibilTarget,.007f,sr);
-        noiseGain=smooth(noiseGain,noiseTarget,.045f,sr);
+        // User-adjustable global smoothing: 0 = fast, 1 = extra natural.
+        // The click/plosive envelope remains fast enough to catch transients.
+        const float response=.35f+1.3f*clamp(s.smoothing,0.f,1.f);
+        breathGain=smooth(breathGain,lastBreathTarget,.015f*response,sr);
+        plosiveGain=smooth(plosiveGain,lastPlosiveTarget,.006f*response,sr);
+        clickGain=smooth(clickGain,lastClickTarget,.001f*response,sr);
+        sibilGain=smooth(sibilGain,lastSibilTarget,.007f*response,sr);
+        noiseGain=smooth(noiseGain,noiseTarget,.045f*response,sr);
         riderGainLinear=smooth(riderGainLinear,riderTargetLinear,.08f+.24f*(1.f-s.riderSpeed),sr);
         liftGainLinear=smooth(liftGainLinear,liftTargetLinear,s.liftAttackMs*.001f,sr);
         bypassMix=smooth(bypassMix,s.bypass?0.f:1.f,.008f,sr);
@@ -274,9 +278,18 @@ void Engine::process(float* const* audio,const float* const* sidechain,int chann
         gainMatchGain=smooth(gainMatchGain,s.gainMatch?matchTarget:1.f,.6f,sr);
         inputGain=smooth(inputGain,inTarget,.006f,sr);
         outputGain=smooth(outputGain,outTarget,.006f,sr);
-        const float effectiveRider=1.f+(riderGainLinear-1.f)*moduleMix[Rider];
-        const float effectiveLift=1.f+(liftGainLinear-1.f)*moduleMix[Lift];
-        const float stageBreath=breathGain,stageSibil=sibilGain;
+        float effectiveRider=1.f+(riderGainLinear-1.f)*moduleMix[Rider];
+        float effectiveLift=1.f+(liftGainLinear-1.f)*moduleMix[Lift];
+        // Protect against stacking SteamRider and WhisperLift beyond the chosen ceiling.
+        const float compound=effectiveRider*effectiveLift;
+        if(compound>dbToGain(s.maxGainDb)) effectiveLift*=dbToGain(s.maxGainDb)/compound;
+        controlDelay[delayWrite]={breathGain,plosiveGain,sibilGain,clickGain,noiseGain};
+        // The 20ms host-reported maximum latency is constant. The LOOKAHEAD control
+        // adjusts detector lead without ever changing host latency mid-stream.
+        const int lead=clamp(int(clamp(s.lookaheadMs,0.f,20.f)*.001f*sr),0,lookaheadSamples);
+        const int controlRead=(delayWrite+delayCapacity-(lookaheadSamples-lead))%delayCapacity;
+        const auto& gain=controlDelay[controlRead];
+        const float stageBreath=gain.breath,stageSibil=gain.sibil;
         const int readDelay=(delayWrite+delayCapacity-lookaheadSamples)%delayCapacity;
         for(int c=0;c<channels;++c) {
             const float current=std::isfinite(audio[c][i])?audio[c][i]:0.f;
@@ -287,11 +300,11 @@ void Engine::process(float* const* audio,const float* const* sidechain,int chann
             auto& state=ch[c];
             float before=x;
             state.popLow=onepole(state.popLow,x,popAlpha);
-            x-=state.popLow*(1.f-plosiveGain)*moduleMix[Guard];
+            x-=state.popLow*(1.f-gain.plosive)*moduleMix[Guard];
             accumulate(Guard,before,x);
             before=x;
             const float highpassed=state.rumble.tick(x); // state remains warm while bypassed
-            const float swept=highpassed*clickGain*noiseGain;
+            const float swept=highpassed*gain.click*gain.noise;
             x+=(swept-x)*moduleMix[Sweep];
             accumulate(Sweep,before,x);
             before=x;
@@ -337,7 +350,8 @@ void Engine::process(float* const* audio,const float* const* sidechain,int chann
             if(x>1.f) x=1.f+.15f*(x-1.f)/(1.f+amp(x-1.f));
             else if(x< -1.f) x=-1.f+.15f*(x+1.f)/(1.f+amp(x+1.f));
             if(!std::isfinite(x)) x=0;
-            const float wet=original+(x-original)*bypassMix;
+            const float wetLevel=original+(x-original)*clamp(s.globalMix,0.f,1.f);
+            const float wet=original+(wetLevel-original)*bypassMix;
             const float delta=original-x;
             const float output=wet+(delta-wet)*deltaMix*bypassMix;
             audio[c][i]=output;
@@ -354,15 +368,16 @@ void Engine::process(float* const* audio,const float* const* sidechain,int chann
         }
         if(capture.samples>0) {
             ++capture.samples;
-            if(capture.samples>=int(fs*10.0)) completeAnalysis();
-            else progress.store(float(capture.samples)/(sr*10.f),std::memory_order_relaxed);
+            if(capture.samples>=int(fs*4.0)) completeAnalysis();
+            else progress.store(float(capture.samples)/(sr*4.f),std::memory_order_relaxed);
         }
     }
     // Signed meters: negative = actual attenuation, positive = upward gain.
     for(int k=0;k<kModuleCount;++k) {
         const float actualDb=beforeEnergy[k]>1.e-12?float(10.0*std::log10(
             (afterEnergy[k]+1.e-12)/(beforeEnergy[k]+1.e-12))):0.f;
-        moduleMeter[k].store(clamp(actualDb,-18.f,18.f),std::memory_order_relaxed);
+        const float contribution=clamp(s.globalMix,0.f,1.f)*(s.bypass?0.f:1.f);
+        moduleMeter[k].store(clamp(actualDb*contribution,-18.f,18.f),std::memory_order_relaxed);
     }
     inputPeak.store(inMax,std::memory_order_relaxed);
     outputPeak.store(outMax,std::memory_order_relaxed);

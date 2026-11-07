@@ -1,8 +1,8 @@
 # ThomC SteamFilter
 
-**SteamFilter** is a steampunk-inspired, real-time vocal refinement VST3 project: seven modular processors, animated vector-drawn rotary controls, actual gain-change metering, event-coloured waveform, manual-review analysis suggestions, A/B snapshots, and an efficient standalone C++ DSP engine.
+**SteamFilter** is a steampunk-inspired, real-time vocal refinement VST3 project: seven independently bypassable DSP processors, animated image-backed rotary controls with real JUCE parameter attachments, actual gain-change metering, event-coloured waveform, manual-review analysis suggestions, A/B snapshots, and an efficient standalone C++ DSP engine.
 
-**Development status: unreleased engineering source, NOT a finished/certified VST3.** No downloadable production binary is included. A professional release needs Windows JUCE compilation, host stress testing and real-vocal listening validation. The project deliberately never publishes an installer just because compilation succeeded.
+**Development status: engineering TEST version, not a certified commercial release.** GitHub Actions creates a downloadable Windows VST3 test artifact after compilation and DSP tests; manual Cubase and listening checks are still required. A professional release needs Windows JUCE compilation, host stress testing and real-vocal listening validation. The project deliberately never publishes an installer just because compilation succeeded.
 
 ### Modules
 
@@ -35,3 +35,7 @@ Only `Assets/MaritimeHeader.jpg` is a static decorative asset from the approved 
 Copyright © 2026 ThomC. All rights reserved. Not licensed for third-party redistribution. JUCE is available under its own dual licensing terms; review commercial licensing **before distributing** proprietary VST3 releases. No external ML libraries or commercial audio models are bundled.
 
 See [Documentation/Specification.md](Documentation/Specification.md) for design decisions and [Documentation/EngineeringStatus.md](Documentation/EngineeringStatus.md) for exact verified/unverified release gates.
+
+### GUI and validation
+
+The UI uses the approved 1672×941 maritime faceplate, separate animated controls, real event-coloured analysis and processing meters. The original static knobs on the art are covered by interactive sprites, not left as inert graphics. The full [Cubase acceptance checklist](Documentation/ManualTestPlan.md) is required before describing this plugin as production-ready.
