@@ -246,10 +246,10 @@ void SteamFilterAudioProcessorEditor::resized() {
         c.slider->setBounds(int(r.getX()*sx),int(r.getY()*sy),int(r.getWidth()*sx),int(r.getHeight()*sy));}
     for(auto& c:buttonRects){const auto r=c.r;
         c.button->setBounds(int(r.getX()*sx),int(r.getY()*sy),int(r.getWidth()*sx),int(r.getHeight()*sy));}
-    waveform->setBounds(int(208*sx),int(207*sy),int(995*sx),int(109*sy));
+    waveform->setBounds(int(204*sx),int(207*sy),int(1020*sx),int(109*sy));
     vintageVU->setBounds(int(8*sx),int(708*sy),int(192*sx),int(172*sy));
     rightMeter->setBounds(int(1542*sx),int(378*sy),int(83*sx),int(277*sy));
-    constexpr float metersX[]={283,485,687,889,1091,1293,1495};
+    constexpr float metersX[]={283,490,696,900,1105,1311,1513};
     for(int k=0;k<steam::kModuleCount;++k)
         moduleMeters[k]->setBounds(int(metersX[k]*sx),int(426*sy),int(18*sx),int(70*sy));
 }
