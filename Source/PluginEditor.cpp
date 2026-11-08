@@ -110,7 +110,6 @@ SteamFilterAudioProcessorEditor::SteamFilterAudioProcessorEditor(SteamFilterAudi
         addAndMakeVisible(*moduleMeters[i]);
     }
     waveform=std::make_unique<WaveView>(processor);addAndMakeVisible(*waveform);
-    leftMeter=std::make_unique<SideMeter>(processor,true);addAndMakeVisible(*leftMeter);
     rightMeter=std::make_unique<SideMeter>(processor,false);addAndMakeVisible(*rightMeter);
     analyzeButton=addTextButton("ANALYSE",1255,179,197,51,[this]{processor.beginAnalyze();suggestionAvailable=false;
         if(suggestButton)suggestButton->setEnabled(false);
@@ -176,7 +175,7 @@ SteamFilterAudioProcessorEditor::~SteamFilterAudioProcessorEditor(){
     knobsBind.clear();
     toggleBind.clear();
     // Timer components must stop before their owner/processor goes away.
-    rightMeter.reset();leftMeter.reset();waveform.reset();
+    rightMeter.reset();waveform.reset();
     for(auto& meter:moduleMeters)meter.reset();
     textButtons.clear();toggleButtons.clear();knobs.clear();
     knobRects.clear();buttonRects.clear();
@@ -244,7 +243,6 @@ void SteamFilterAudioProcessorEditor::resized() {
     for(auto& c:buttonRects){const auto r=c.r;
         c.button->setBounds(int(r.getX()*sx),int(r.getY()*sy),int(r.getWidth()*sx),int(r.getHeight()*sy));}
     waveform->setBounds(int(203*sx),int(172*sy),int(1022*sx),int(161*sy));
-    leftMeter->setBounds(int(47*sx),int(357*sy),int(82*sx),int(10*sy));
     rightMeter->setBounds(int(1537*sx),int(393*sy),int(83*sx),int(290*sy));
     constexpr float metersX[]={307,510,708,910,1110,1305,1502};
     for(int k=0;k<steam::kModuleCount;++k)

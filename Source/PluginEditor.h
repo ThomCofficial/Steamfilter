@@ -59,7 +59,7 @@ private:
     std::vector<ButtonInfo> buttonRects;
     std::array<std::unique_ptr<ModuleMeter>,steam::kModuleCount> moduleMeters;
     std::unique_ptr<WaveView> waveform;
-    std::unique_ptr<SideMeter> leftMeter,rightMeter;
+    std::unique_ptr<SideMeter> rightMeter;
     std::unique_ptr<juce::FileChooser> fileChooser;
     juce::TextButton* analyzeButton=nullptr;
     juce::TextButton* suggestButton=nullptr;
