@@ -30,6 +30,13 @@ private:
         void paint(juce::Graphics&) override;
         void timerCallback() override{if(isShowing())repaint();}
     };
+    struct VintageVU final : juce::Component, private juce::Timer {
+        SteamFilterAudioProcessor& owner;
+        float db=-20.f;
+        explicit VintageVU(SteamFilterAudioProcessor& p):owner(p){startTimerHz(30);}
+        void timerCallback() override;
+        void paint(juce::Graphics&) override;
+    };
     struct ModuleMeter final : juce::Component, public juce::SettableTooltipClient, private juce::Timer {
         SteamFilterAudioProcessor& owner;
         int index;float displayed=0;
@@ -59,6 +66,7 @@ private:
     std::vector<ButtonInfo> buttonRects;
     std::array<std::unique_ptr<ModuleMeter>,steam::kModuleCount> moduleMeters;
     std::unique_ptr<WaveView> waveform;
+    std::unique_ptr<VintageVU> vintageVU;
     std::unique_ptr<SideMeter> rightMeter;
     std::unique_ptr<juce::FileChooser> fileChooser;
     juce::TextButton* analyzeButton=nullptr;

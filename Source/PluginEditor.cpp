@@ -54,7 +54,7 @@ void BrassLookAndFeel::drawRotarySlider(juce::Graphics& g,int x,int y,int w,int 
     static const auto knob=juce::ImageCache::getFromMemory(
         BinaryData::KnobHardwarePremium_png,BinaryData::KnobHardwarePremium_pngSize);
     const float cx=x+w*.5f,cy=y+h*.5f;
-    const float d=float(std::min(w,h))*.86f;
+    const float d=float(std::min(w,h))*.985f;
     if(knob.isValid())
         g.drawImage(knob,cx-d*.5f,cy-d*.5f,d,d,0,0,knob.getWidth(),knob.getHeight());
     const float a=start+juce::jlimit(0.f,1.f,pos)*(end-start);
@@ -82,39 +82,42 @@ void BrassLookAndFeel::drawButtonText(juce::Graphics&,juce::TextButton&,bool,boo
     // Names and numeric scales live on the faceplate, never on top of movable buttons.
 }
 void BrassLookAndFeel::drawToggleButton(juce::Graphics& g,juce::ToggleButton& b,bool over,bool) {
-    const auto r=b.getLocalBounds().toFloat().reduced(4);
-    const auto col=b.getToggleState()?juce::Colour(0xffffa31d):juce::Colour(0xff322624);
-    g.setColour(col.withAlpha(over?.95f:.85f));g.fillEllipse(r);
-    g.setColour(b.getToggleState()?juce::Colour(0xffffd683):juce::Colour(0xffa1773a));g.drawEllipse(r,2.f);
-    if(b.getToggleState()){
-        g.setColour(juce::Colour(0xffffffbf));
-        g.drawLine(r.getCentreX(),r.getY()+r.getHeight()*.25f,r.getCentreX(),r.getY()+r.getHeight()*.47f,2.5f);
-        juce::Path powerArc;
-        powerArc.addCentredArc(r.getCentreX(),r.getCentreY()+r.getHeight()*.08f,r.getWidth()*.23f,r.getHeight()*.23f,0.f,2.4f,6.9f,true);
-        g.strokePath(powerArc,juce::PathStrokeType(2.5f));
+    // Approved artwork already has an illuminated physical power key.
+    // The interactive state changes its illumination, but never paints
+    // a second printed switch or another duplicate power symbol.
+    const auto r=b.getLocalBounds().toFloat().reduced(3.f);
+    if(!b.getToggleState()){
+        g.setColour(juce::Colour(0xdc191818));
+        g.fillEllipse(r);
+        g.setColour(juce::Colour(0xff694b2b));
+        g.drawEllipse(r,2.f);
+    }else if(over){
+        g.setColour(juce::Colour(0x44ffe293));
+        g.fillEllipse(r);
     }
 }
 
 SteamFilterAudioProcessorEditor::SteamFilterAudioProcessorEditor(SteamFilterAudioProcessor& p)
  : juce::AudioProcessorEditor(&p),processor(p) {
     setLookAndFeel(&theme);
-    faceplate=juce::ImageCache::getFromMemory(BinaryData::FaceplateNoGauge_jpg,BinaryData::FaceplateNoGauge_jpgSize);
+    faceplate=juce::ImageCache::getFromMemory(BinaryData::FaceplateApprovedNoNeedle_jpg,BinaryData::FaceplateApprovedNoNeedle_jpgSize);
     // Functional animated modules: every knob is a live APVTS attachment.
-    addKnob("input",40,226,102,true);addKnob("output",1526,226,102,true);
+    addKnob("input",40,215,102,true);addKnob("output",1509,215,102,true);
     constexpr const char* onKeys[]={"sweepOn","breathOn","guardOn","sibilOn","riderOn","liftOn","polishOn"};
     for(int i=0;i<steam::kModuleCount;++i){
-        constexpr float powerX[]={146,348,548,749,949,1147,1343};
-        addToggle(onKeys[i],powerX[i],354,40);
+        constexpr float powerX[]={124,326,528,730,932,1134,1335};
+        addToggle(onKeys[i],powerX[i],338,40);
         addPanel(i);
         moduleMeters[i]=std::make_unique<ModuleMeter>(processor,i);
         addAndMakeVisible(*moduleMeters[i]);
     }
     waveform=std::make_unique<WaveView>(processor);addAndMakeVisible(*waveform);
+    vintageVU=std::make_unique<VintageVU>(processor);addAndMakeVisible(*vintageVU);
     rightMeter=std::make_unique<SideMeter>(processor,false);addAndMakeVisible(*rightMeter);
-    analyzeButton=addTextButton("ANALYSE",1255,179,197,51,[this]{processor.beginAnalyze();suggestionAvailable=false;
+    analyzeButton=addTextButton("ANALYSE",1246,172,211,53,[this]{processor.beginAnalyze();suggestionAvailable=false;
         if(suggestButton)suggestButton->setEnabled(false);
         analysisStatus="Listening to playback...";});
-    suggestButton=addTextButton("Suggestions",1248,279,203,33,[this]{
+    suggestButton=addTextButton("Suggestions",1218,275,238,38,[this]{
         if(!suggestionAvailable) return;
         juce::String msg="Apply these analysis suggestions?\n\nBreath reduction: "+juce::String(currentSuggestion.breathReductionDb,1)+" dB\n"+
           "Plosive reduction: "+juce::String(currentSuggestion.plosiveReductionDb,1)+" dB\n"+
@@ -129,32 +132,32 @@ SteamFilterAudioProcessorEditor::SteamFilterAudioProcessorEditor(SteamFilterAudi
            }));
     });
     suggestButton->setEnabled(false);
-    addTextButton("CAPTURE",1255,243,197,33,[this]{processor.beginAnalyze();suggestionAvailable=false;
+    addTextButton("CAPTURE",1217,233,238,35,[this]{processor.beginAnalyze();suggestionAvailable=false;
         if(suggestButton)suggestButton->setEnabled(false);analysisStatus="Capturing playback...";});
     addTextButton("PRESETS",1179,112,151,33,[this]{showPresets();});
     addTextButton("SAVE",1538,112,41,33,[this]{savePreset();});
     addTextButton("LOAD",1347,112,187,33,[this]{loadPreset();});
-    bankAButton=addTextButton("A",890,827,61,43,[this]{processor.switchAB(0);});
-    bankBButton=addTextButton("B",954,827,58,43,[this]{processor.switchAB(1);});
-    gainMatchButton=addTextButton("GAIN MATCH",1011,827,58,43,[this]{
+    bankAButton=addTextButton("A",867,810,62,50,[this]{processor.switchAB(0);});
+    bankBButton=addTextButton("B",932,810,60,50,[this]{processor.switchAB(1);});
+    gainMatchButton=addTextButton("GAIN MATCH",1000,810,58,50,[this]{
         if(auto* v=processor.state.getRawParameterValue("gainMatch"))processor.setParameterValue("gainMatch",v->load()>.5f?0.f:1.f);
     });
-    bypassButton=addTextButton("BYPASS",1466,744,160,58,[this]{processor.setParameterValue("bypass",processor.state.getRawParameterValue("bypass")->load()>.5f?0.f:1.f);});
-    deltaButton=addTextButton("DELTA",1466,816,160,47,[this]{
+    bypassButton=addTextButton("BYPASS",1452,716,174,59,[this]{processor.setParameterValue("bypass",processor.state.getRawParameterValue("bypass")->load()>.5f?0.f:1.f);});
+    deltaButton=addTextButton("DELTA",1452,782,174,59,[this]{
         if(auto* param=processor.state.getParameter("delta")) processor.setParameterValue("delta",param->getValue()>.5f?0:1);
     });
-    addKnob("globalMix",425,808,54);addKnob("maxGain",345,808,54);
-    addKnob("detectorSensitivity",557,808,54);addKnob("lookahead",650,808,54);
-    addKnob("smoothing",757,808,54);
-    sidechainButton=addTextButton("SIDECHAIN",953,631,160,35,[this]{auto* p=processor.state.getRawParameterValue("sidechain");
+    addKnob("globalMix",433,778,52);addKnob("maxGain",350,778,52);
+    addKnob("detectorSensitivity",555,778,52);addKnob("lookahead",655,778,52);
+    addKnob("smoothing",756,778,52);
+    sidechainButton=addTextButton("SIDECHAIN",943,610,178,34,[this]{auto* p=processor.state.getRawParameterValue("sidechain");
        if(p)processor.setParameterValue("sidechain",p->load()>.5f?0.f:1.f);});
-    voiceProtectButton=addTextButton("VOICE PROTECT",1150,631,162,35,[this]{auto* p=processor.state.getRawParameterValue("voiceProtect");
+    voiceProtectButton=addTextButton("VOICE PROTECT",1128,610,185,34,[this]{auto* p=processor.state.getRawParameterValue("voiceProtect");
        if(p)processor.setParameterValue("voiceProtect",p->load()>.5f?0.f:1.f);});
     for(int k=0;k<3;++k){
         const char* names[]={"WARM","PRESENCE","AIR"};
-        polishButtons[k]=addTextButton(names[k],1344+k*60.f,573,55,41,[this,k]{processor.setParameterValue("polishMode",float(k));});
+        polishButtons[k]=addTextButton(names[k],1350+k*59.f,559,56,49,[this,k]{processor.setParameterValue("polishMode",float(k));});
     }
-    addKnob("input",254,808,54);
+    addKnob("input",256,778,52);
     startTimerHz(20);
     setResizable(true,true);setResizeLimits(1254,706,2006,1129);
     if(auto* constrainer=getConstrainer())constrainer->setFixedAspectRatio(double(baseWidth)/baseHeight);
@@ -175,7 +178,7 @@ SteamFilterAudioProcessorEditor::~SteamFilterAudioProcessorEditor(){
     knobsBind.clear();
     toggleBind.clear();
     // Timer components must stop before their owner/processor goes away.
-    rightMeter.reset();waveform.reset();
+    rightMeter.reset();waveform.reset();vintageVU.reset();
     for(auto& meter:moduleMeters)meter.reset();
     textButtons.clear();toggleButtons.clear();knobs.clear();
     knobRects.clear();buttonRects.clear();
@@ -206,15 +209,16 @@ juce::ToggleButton* SteamFilterAudioProcessorEditor::addToggle(const char* id,fl
 }
 void SteamFilterAudioProcessorEditor::addPanel(int index) {
     const char* large[]={"sweepAmount","breathReduction","guardReduction","sibilReduction","riderAmount","liftAmount","polishAmount"};
-    constexpr int mainX[]={190,389,592,793,989,1190,1385};
-    addKnob(large[index],float(mainX[index]),423,102,true);
+    constexpr int mainX[]={160,362,564,766,968,1170,1372};
+    addKnob(large[index],float(mainX[index]),414,102,true);
     constexpr const char* small[6][3]={
         {"click","rumble","noise"},{"breathSensitivity","breathLength","breathPreserve"},
         {"guardFrequency","guardHold","guardSensitivity"},{"sibilFrequency","sibilWidth","sibilSensitivity"},
         {"riderTarget","riderRange","riderSpeed"},{"liftThreshold","liftRange","liftAttack"}};
-    constexpr int positions[6][3]={{147,209,272},{349,410,474},{552,617,682},
-                                    {748,811,870},{948,1010,1072},{1146,1210,1272}};
-    if(index<6 && index!=1)for(int j=0;j<3;++j)addKnob(small[index][j],float(positions[index][j]),546,54);
+    constexpr int positions[6][3]={{120,186,253},{0,0,0},{532,596,660},
+                                     {736,801,862},{936,1005,1065},{1142,1206,1271}};
+    if(index<6 && index!=1)for(int j=0;j<3;++j)
+        addKnob(small[index][j],float(positions[index][j]),539,52);
 }
 void SteamFilterAudioProcessorEditor::drawStaticUI(juce::Graphics& g) {
     // Matched faceplate art: NO baked-in knobs/pointers, NO CPU dial.
@@ -242,11 +246,12 @@ void SteamFilterAudioProcessorEditor::resized() {
         c.slider->setBounds(int(r.getX()*sx),int(r.getY()*sy),int(r.getWidth()*sx),int(r.getHeight()*sy));}
     for(auto& c:buttonRects){const auto r=c.r;
         c.button->setBounds(int(r.getX()*sx),int(r.getY()*sy),int(r.getWidth()*sx),int(r.getHeight()*sy));}
-    waveform->setBounds(int(203*sx),int(172*sy),int(1022*sx),int(161*sy));
-    rightMeter->setBounds(int(1537*sx),int(393*sy),int(83*sx),int(290*sy));
-    constexpr float metersX[]={307,510,708,910,1110,1305,1502};
+    waveform->setBounds(int(208*sx),int(207*sy),int(995*sx),int(109*sy));
+    vintageVU->setBounds(int(8*sx),int(708*sy),int(192*sx),int(172*sy));
+    rightMeter->setBounds(int(1542*sx),int(378*sy),int(83*sx),int(277*sy));
+    constexpr float metersX[]={283,485,687,889,1091,1293,1495};
     for(int k=0;k<steam::kModuleCount;++k)
-        moduleMeters[k]->setBounds(int(metersX[k]*sx),int(438*sy),int(17*sx),int(64*sy));
+        moduleMeters[k]->setBounds(int(metersX[k]*sx),int(426*sy),int(18*sx),int(70*sy));
 }
 
 void SteamFilterAudioProcessorEditor::timerCallback() {
@@ -278,56 +283,70 @@ void SteamFilterAudioProcessorEditor::timerCallback() {
 }
 
 void SteamFilterAudioProcessorEditor::WaveView::paint(juce::Graphics& g) {
-    auto b=getLocalBounds().toFloat();
-    g.setGradientFill(juce::ColourGradient(juce::Colour(0xff0c141e),0,0,juce::Colour(0xff22211e),0,b.getHeight(),false));
-    g.fillRoundedRectangle(b,3.f);
-    g.setColour(brass);g.drawRoundedRectangle(b.reduced(1),3.f,1.4f);
-    const float middle=b.getCentreY();
-    g.setColour(juce::Colour(0x44b3ad83));
-    for(int j=1;j<=5;++j)g.drawHorizontalLine(int(b.getHeight()*j/6),0,b.getWidth());
-    const uint32_t end=owner.engine.waveWrite.load(std::memory_order_acquire);
+    // The engraved legend is part of the approved faceplate immediately above
+    // this region. Paint only real received audio samples below that legend.
+    const auto b=getLocalBounds().toFloat();
+    g.setGradientFill(juce::ColourGradient(juce::Colour(0xff0e1820),0,0,
+        juce::Colour(0xff101a20),0,b.getHeight(),false));
+    g.fillRect(b);
+    g.setColour(juce::Colour(0x3855737e));
+    for(int j=1;j<=4;++j)g.drawHorizontalLine(int(b.getHeight()*j/5),
+                                               0,b.getWidth());
+    const float mid=b.getCentreY();
+    const auto end=owner.engine.waveWrite.load(std::memory_order_acquire);
     const float dx=b.getWidth()/float(steam::Engine::waveSize);
-    juce::Path rider,lift;rider.preallocateSpace(steam::Engine::waveSize*3);lift.preallocateSpace(steam::Engine::waveSize*3);
+    juce::Path rider,lift;
+    rider.preallocateSpace(steam::Engine::waveSize*3);
+    lift.preallocateSpace(steam::Engine::waveSize*3);
     for(int i=0;i<steam::Engine::waveSize;++i){
         const auto index=(end+i)%steam::Engine::waveSize;
         const auto packed=owner.engine.waveform[index].load(std::memory_order_acquire);
         float peak,riderDb,liftDb;unsigned events;
         steam::Engine::unpackWave(packed,peak,riderDb,events,liftDb);
-        const float x=float(i)*dx;
-        const float height=std::pow(juce::jlimit(0.f,1.f,peak),.62f)*middle*.83f;
-        g.setColour(juce::Colour(0xffe9c995).withAlpha(.35f+peak*.6f));
-        g.drawVerticalLine(juce::roundToInt(x),middle-height,middle+height);
-        if(events!=0){
-            const juce::Colour mark= (events&steam::EventPlosive)?juce::Colour(0xffd4453d):
-                ((events&steam::EventClick)?juce::Colour(0xffbb65d2):
-                ((events&steam::EventSibil)?juce::Colour(0xff4bb7df):amber));
-            g.setColour(mark.withAlpha(.23f));g.fillRect(x,0.f,dx+1.f,b.getHeight());
+        const float x=i*dx;
+        if(events){
+            const auto mark=(events&steam::EventPlosive)?juce::Colour(0xffef4037):
+                ((events&steam::EventClick)?juce::Colour(0xffa95bea):
+                ((events&steam::EventSibil)?juce::Colour(0xff37d8ea):juce::Colour(0xffffc237)));
+            g.setColour(mark.withAlpha(.30f));
+            g.fillRect(x,0.f,dx+1.f,b.getHeight());
         }
-        const float y=b.getHeight()*.75f-juce::jlimit(-13.f,13.f,riderDb)*2.f;
-        const float ly=b.getHeight()*.89f-juce::jlimit(-13.f,13.f,liftDb)*2.f;
-        if(i==0){rider.startNewSubPath(x,y);lift.startNewSubPath(x,ly);}
-        else {rider.lineTo(x,y);lift.lineTo(x,ly);}
+        const float height=std::pow(juce::jlimit(0.f,1.f,peak),.54f)*mid*.84f;
+        g.setColour(juce::Colour(0xfff2dbc0).withAlpha(.38f+.60f*peak));
+        g.drawVerticalLine(juce::roundToInt(x),mid-height,mid+height);
+        const float ry=b.getHeight()*.80f-juce::jlimit(-12.f,12.f,riderDb)*1.5f;
+        const float ly=b.getHeight()*.91f-juce::jlimit(-12.f,12.f,liftDb)*1.5f;
+        if(i==0){rider.startNewSubPath(x,ry);lift.startNewSubPath(x,ly);}
+        else {rider.lineTo(x,ry);lift.lineTo(x,ly);}
     }
-    g.setColour(green);g.strokePath(rider,juce::PathStrokeType(1.6f));
-    g.setColour(amber);g.strokePath(lift,juce::PathStrokeType(1.4f));
-    // ASCII-only typography and individually painted colour swatches.
-    // Font substitution in Cubase must not produce mojibake squares.
-    struct Legend{const char* name;juce::Colour colour;float step;};
-    const Legend legend[]={
-        {"BREATH",juce::Colour(0xfff6bd32),110.f},
-        {"PLOSIVE",juce::Colour(0xffd4453d),113.f},
-        {"CLICK",juce::Colour(0xffbb65d2),95.f},
-        {"SIBILANCE",juce::Colour(0xff4bb7df),122.f},
-        {"RIDER",juce::Colour(0xff69cb86),93.f},
-        {"WHISPER",juce::Colour(0xffff9e24),105.f}
-    };
-    float xx=10.f;
-    for(const auto& item:legend){
-        g.setColour(item.colour);g.fillRoundedRectangle(xx,9.f,8.f,8.f,1.f);
-        g.setColour(ivory);g.setFont(juce::Font("Georgia",11.f,juce::Font::plain));
-        g.drawText(item.name,int(xx+12),4,int(item.step-12),20,juce::Justification::centredLeft);
-        xx+=item.step;
-    }
+    g.setColour(juce::Colour(0xff51dd70));
+    g.strokePath(rider,juce::PathStrokeType(1.45f));
+    g.setColour(juce::Colour(0xffffa11a));
+    g.strokePath(lift,juce::PathStrokeType(1.45f));
+}
+void SteamFilterAudioProcessorEditor::VintageVU::timerCallback(){
+    // Mean vocal level, not an arbitrary decorative CPU readout.
+    const float target=juce::jlimit(-20.f,3.f,
+        owner.engine.currentRmsDb.load(std::memory_order_relaxed));
+    db+=(target-db)*.14f;
+    if(isShowing())repaint();
+}
+void SteamFilterAudioProcessorEditor::VintageVU::paint(juce::Graphics& g){
+    const float sx=getWidth()/192.f,sy=getHeight()/172.f;
+    const float px=124.f*sx,py=139.f*sy;
+    const float fraction=juce::jlimit(0.f,1.f,(db+20.f)/23.f);
+    const float theta=-1.05f+1.81f*fraction;
+    const float length=82.f*juce::jmin(sx,sy);
+    const auto tx=px+std::sin(theta)*length;
+    const auto ty=py-std::cos(theta)*length;
+    g.setColour(juce::Colour(0x8026190f));
+    g.drawLine(px+1.4f,py+1.5f,tx+1.4f,ty+1.5f,4.f*juce::jmin(sx,sy));
+    g.setColour(juce::Colour(0xff2d1c12));
+    g.drawLine(px,py,tx,ty,2.5f*juce::jmin(sx,sy));
+    g.setColour(juce::Colour(0xffb4833a));
+    g.drawLine(px,py,tx,ty,1.1f*juce::jmin(sx,sy));
+    g.setColour(juce::Colour(0xff6b3817));
+    g.fillEllipse(px-3.f*sx,py-3.f*sy,6.f*sx,6.f*sy);
 }
 void SteamFilterAudioProcessorEditor::ModuleMeter::timerCallback() {
     const auto data=owner.engine.readStats();
