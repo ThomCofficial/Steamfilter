@@ -327,7 +327,7 @@ void SteamFilterAudioProcessorEditor::WaveView::paint(juce::Graphics& g) {
 void SteamFilterAudioProcessorEditor::VintageVU::timerCallback(){
     // Mean vocal level, not an arbitrary decorative CPU readout.
     const float target=juce::jlimit(-20.f,3.f,
-        owner.engine.currentRmsDb.load(std::memory_order_relaxed));
+        owner.engine.readStats().detectorRmsDb);
     db+=(target-db)*.14f;
     if(isShowing())repaint();
 }
