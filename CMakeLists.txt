@@ -40,7 +40,7 @@ if(STEAMFILTER_BUILD_PLUGIN)
     IS_MIDI_EFFECT FALSE
     EDITOR_WANTS_KEYBOARD_FOCUS FALSE
     COPY_PLUGIN_AFTER_BUILD FALSE)
-  juce_add_binary_data(SteamFilterArt SOURCES Assets/ApprovedFaceplate.jpg Assets/KnobMain.png Assets/KnobMini.png Assets/GaugeFace.png)
+  juce_add_binary_data(SteamFilterArt SOURCES Assets/FaceplateNoGauge.jpg Assets/KnobHardwarePremium.png)
   target_sources(SteamFilter PRIVATE Source/PluginProcessor.cpp Source/PluginEditor.cpp)
   target_link_libraries(SteamFilter PRIVATE SteamDSP SteamFilterArt juce::juce_audio_utils juce::juce_dsp juce::juce_gui_extra)
   target_compile_definitions(SteamFilter PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_VST3_CAN_REPLACE_VST2=0)
@@ -62,5 +62,17 @@ if(STEAMFILTER_BUILD_PLUGIN)
     juce_generate_juce_header(SteamFilterLifecycleSmoke)
     add_test(NAME SteamFilterEditorLifecycle COMMAND SteamFilterLifecycleSmoke)
     set_tests_properties(SteamFilterEditorLifecycle PROPERTIES TIMEOUT 60)
+
+    # Host the actual compiled VST3 DLL, not the in-process processor class.
+    # Cubase insert removal includes VST3 wrapper teardown, which the simple
+    # editor smoke test cannot exercise.
+    juce_add_console_app(SteamFilterVST3HostSmoke PRODUCT_NAME "SteamFilter VST3 Host Smoke")
+    target_sources(SteamFilterVST3HostSmoke PRIVATE Tests/VST3HostSmoke.cpp)
+    target_link_libraries(SteamFilterVST3HostSmoke PRIVATE
+      juce::juce_audio_utils juce::juce_audio_processors juce::juce_gui_extra)
+    target_compile_definitions(SteamFilterVST3HostSmoke PRIVATE
+      JUCE_PLUGINHOST_VST3=1 JUCE_PLUGINHOST_VST=0
+      JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0)
+    juce_generate_juce_header(SteamFilterVST3HostSmoke)
   endif()
 endif()

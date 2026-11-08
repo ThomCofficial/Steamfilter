@@ -48,36 +48,25 @@ BrassLookAndFeel::BrassLookAndFeel(){
     setColour(juce::Slider::textBoxBackgroundColourId,dark);
     setColour(juce::Slider::textBoxOutlineColourId,brass);
 }
-void BrassLookAndFeel::drawRotarySlider(juce::Graphics& g,int x,int y,int w,int h,float pos,float start,float end,juce::Slider&) {
-    // One *moving* indicator and a procedurally illuminated dial. Do not
-    // overlay a static pointer image on another, otherwise knobs appear doubled.
-    const float cx=float(x)+float(w)*.5f,cy=float(y)+float(h)*.5f;
-    const float d=float(std::min(w,h))*.83f;
-    const float left=cx-d*.5f,top=cy-d*.5f;
-    auto outer=juce::Rectangle<float>(left,top,d,d);
-    g.setColour(juce::Colour(0xff241e18));g.fillEllipse(outer.expanded(2.0f));
-    g.setColour(juce::Colour(0xfff0b64d));g.drawEllipse(outer,3.f);
-    auto inner=outer.reduced(d*.085f);
-    g.setGradientFill(juce::ColourGradient(juce::Colour(0xff7c7770),
-        inner.getX()+inner.getWidth()*.13f,inner.getY()+inner.getHeight()*.10f,
-        juce::Colour(0xff181b20),inner.getRight(),inner.getBottom(),false));
-    g.fillEllipse(inner);
-    g.setColour(juce::Colour(0xffd6a45c));g.drawEllipse(inner,1.4f);
-    auto centre=inner.reduced(d*.13f);
-    g.setGradientFill(juce::ColourGradient(juce::Colour(0xff494b4b),
-        centre.getX(),centre.getY(),juce::Colour(0xff17191c),
-        centre.getRight(),centre.getBottom(),false));
-    g.fillEllipse(centre);
-    const float angle=start+pos*(end-start);
-    const float radius=d*.28f;
-    const float vx=std::sin(angle),vy=-std::cos(angle);
-    g.setColour(juce::Colours::black.withAlpha(.8f));
-    g.drawLine(cx+1.5f,cy+2.f,cx+vx*radius+1.5f,cy+vy*radius+2.f,d*.085f);
+void BrassLookAndFeel::drawRotarySlider(juce::Graphics& g,int x,int y,int w,int h,
+                                      float pos,float start,float end,juce::Slider&) {
+    // Unmarked, photorealistic hardware + ONE live indicator: no doubled pointers.
+    static const auto knob=juce::ImageCache::getFromMemory(
+        BinaryData::KnobHardwarePremium_png,BinaryData::KnobHardwarePremium_pngSize);
+    const float cx=x+w*.5f,cy=y+h*.5f;
+    const float d=float(std::min(w,h))*.86f;
+    if(knob.isValid())
+        g.drawImage(knob,cx-d*.5f,cy-d*.5f,d,d,0,0,knob.getWidth(),knob.getHeight());
+    const float a=start+juce::jlimit(0.f,1.f,pos)*(end-start);
+    const float radius=d*.29f,vx=std::sin(a),vy=-std::cos(a);
+    g.setColour(juce::Colour(0xab120b08));
+    g.drawLine(cx+1.1f,cy+1.8f,cx+vx*radius+1.1f,cy+vy*radius+1.8f,d*.067f);
     g.setColour(juce::Colour(0xffffa43d));
-    g.drawLine(cx,cy,cx+vx*radius,cy+vy*radius,d*.064f);
-    g.setColour(juce::Colour(0xffffedac));
-    g.drawLine(cx,cy,cx+vx*radius*.95f,cy+vy*radius*.95f,d*.019f);
-    g.setColour(juce::Colour(0xffedc277));g.fillEllipse(cx-2.5f,cy-2.5f,5.f,5.f);
+    g.drawLine(cx,cy,cx+vx*radius,cy+vy*radius,d*.047f);
+    g.setColour(juce::Colour(0xffffe8ab));
+    g.drawLine(cx,cy,cx+vx*radius*.96f,cy+vy*radius*.96f,d*.015f);
+    g.setColour(juce::Colour(0xffd2a35e));
+    g.fillEllipse(cx-2.f,cy-2.f,4.f,4.f);
 }
 
 void BrassLookAndFeel::drawButtonBackground(juce::Graphics& g,juce::Button& b,const juce::Colour&,bool over,bool down) {
@@ -109,7 +98,7 @@ void BrassLookAndFeel::drawToggleButton(juce::Graphics& g,juce::ToggleButton& b,
 SteamFilterAudioProcessorEditor::SteamFilterAudioProcessorEditor(SteamFilterAudioProcessor& p)
  : juce::AudioProcessorEditor(&p),processor(p) {
     setLookAndFeel(&theme);
-    faceplate=juce::ImageCache::getFromMemory(BinaryData::ApprovedFaceplate_jpg,BinaryData::ApprovedFaceplate_jpgSize);
+    faceplate=juce::ImageCache::getFromMemory(BinaryData::FaceplateNoGauge_jpg,BinaryData::FaceplateNoGauge_jpgSize);
     // Functional animated modules: every knob is a live APVTS attachment.
     addKnob("input",40,226,102,true);addKnob("output",1526,226,102,true);
     constexpr const char* onKeys[]={"sweepOn","breathOn","guardOn","sibilOn","riderOn","liftOn","polishOn"};
@@ -123,7 +112,6 @@ SteamFilterAudioProcessorEditor::SteamFilterAudioProcessorEditor(SteamFilterAudi
     waveform=std::make_unique<WaveView>(processor);addAndMakeVisible(*waveform);
     leftMeter=std::make_unique<SideMeter>(processor,true);addAndMakeVisible(*leftMeter);
     rightMeter=std::make_unique<SideMeter>(processor,false);addAndMakeVisible(*rightMeter);
-    cpuGauge=std::make_unique<PressureGauge>(processor);addAndMakeVisible(*cpuGauge);
     analyzeButton=addTextButton("ANALYSE",1255,179,197,51,[this]{processor.beginAnalyze();suggestionAvailable=false;
         if(suggestButton)suggestButton->setEnabled(false);
         analysisStatus="Listening to playback...";});
@@ -188,7 +176,6 @@ SteamFilterAudioProcessorEditor::~SteamFilterAudioProcessorEditor(){
     knobsBind.clear();
     toggleBind.clear();
     // Timer components must stop before their owner/processor goes away.
-    cpuGauge.reset();
     rightMeter.reset();leftMeter.reset();waveform.reset();
     for(auto& meter:moduleMeters)meter.reset();
     textButtons.clear();toggleButtons.clear();knobs.clear();
@@ -201,7 +188,7 @@ juce::Slider* SteamFilterAudioProcessorEditor::addKnob(const char* id,float x,fl
     ptr->setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
     ptr->setRotaryParameters(-2.4f,2.4f,true);
     ptr->setTextBoxStyle(juce::Slider::NoTextBox,false,0,0);
-    ptr->setPopupDisplayEnabled(true,false,this);
+    ptr->setPopupDisplayEnabled(false,false,nullptr);
     if(auto* param=processor.state.getParameter(id))ptr->setTooltip(param->getName(128));
     addAndMakeVisible(*ptr);
     knobsBind.push_back(std::make_unique<SteamFilterAudioProcessor::APVTS::SliderAttachment>(processor.state,id,*ptr));
@@ -231,238 +218,14 @@ void SteamFilterAudioProcessorEditor::addPanel(int index) {
     if(index<6 && index!=1)for(int j=0;j<3;++j)addKnob(small[index][j],float(positions[index][j]),546,54);
 }
 void SteamFilterAudioProcessorEditor::drawStaticUI(juce::Graphics& g) {
-    // The original commissioned artwork remains the maritime surround/header.
-    // The instrument body is genuinely reconstructed below, not patched by
-    // little ivory rectangles over baked-in, unusable hardware.
+    // Matched faceplate art: NO baked-in knobs/pointers, NO CPU dial.
+    // All meters, controls and waveforms are real, live JUCE components.
     if(faceplate.isValid())
-        g.drawImage(faceplate,0.f,0.f,baseWidth,baseHeight,0,0,faceplate.getWidth(),faceplate.getHeight());
-    else g.fillAll(juce::Colour(0xff241b17));
-
-    const auto pale=juce::Colour(0xfff1e4cd);
-    const auto shade=juce::Colour(0xffc8a879);
-    const auto luminous=juce::Colour(0xfffbd28c);
-    const auto black=juce::Colour(0xff19171a);
-    const auto copper=juce::Colour(0xff9a5b25);
-    auto engraving=[&](juce::Rectangle<float> r) {
-        g.setColour(juce::Colour(0xff23191a));
-        g.fillRoundedRectangle(r.expanded(3.f),9.f);
-        juce::ColourGradient rim(juce::Colour(0xfffcd37a),r.getX(),r.getY(),
-                                 juce::Colour(0xff713918),r.getRight(),r.getBottom(),false);
-        rim.addColour(.44,juce::Colour(0xffb77c36));
-        g.setGradientFill(rim);g.fillRoundedRectangle(r,8.f);
-        g.setColour(juce::Colour(0xff261b18));g.fillRoundedRectangle(r.reduced(4.f),6.f);
-    };
-    auto face=[&](juce::Rectangle<float> r) {
-        engraving(r);
-        auto inner=r.reduced(7.f);
-        juce::ColourGradient enamel(juce::Colour(0xfffff1db),inner.getX(),inner.getY(),
-                                   juce::Colour(0xffd3b991),inner.getRight(),inner.getBottom(),false);
-        enamel.addColour(.46,juce::Colour(0xfff1e4ce));
-        g.setGradientFill(enamel);g.fillRoundedRectangle(inner,5.f);
-        wallpaper(g,inner.reduced(3.f));
-        g.setColour(juce::Colour(0x66ffffff));g.drawRoundedRectangle(inner.reduced(1.f),4.f,.8f);
-        g.setColour(juce::Colour(0x99654322));g.drawRoundedRectangle(inner.reduced(3.3f),3.f,.8f);
-    };
-    auto screw=[&](float x,float y) {
-        g.setColour(juce::Colour(0xff563722));g.fillEllipse(x-4.3f,y-4.3f,8.6f,8.6f);
-        g.setColour(juce::Colour(0xffe1b368));g.fillEllipse(x-3.4f,y-3.4f,6.8f,6.8f);
-        g.setColour(juce::Colour(0xff533d2f));g.drawLine(x-2.1f,y+1.1f,x+2.2f,y-1.5f,1.f);
-    };
-    auto brassPlate=[&](juce::Rectangle<float> r,juce::String text,float fontSize) {
-        juce::ColourGradient t(juce::Colour(0xff4c3630),r.getX(),r.getY(),
-                               juce::Colour(0xff11151a),r.getX(),r.getBottom(),false);
-        t.addColour(.52,juce::Colour(0xff25252a));
-        g.setGradientFill(t);g.fillRoundedRectangle(r,5.f);
-        g.setColour(juce::Colour(0xffdca253));g.drawRoundedRectangle(r.reduced(.6f),5.f,1.7f);
-        g.setColour(juce::Colour(0x99ffe3aa));g.drawHorizontalLine(int(r.getY()+2.f),r.getX()+12.f,r.getRight()-12.f);
-        letters(g,text,r.getX()+6.f,r.getY()+1.f,r.getWidth()-12.f,
-                r.getHeight()-2.f,fontSize,juce::Colour(0xfff8e5c9),true);
-    };
-    auto arcScale=[&](float cx,float cy,float radius,int ticks) {
-        for(int n=0;n<ticks;++n) {
-            const float ang=-2.35f+float(n)*4.7f/float(ticks-1);
-            const float ux=std::sin(ang),uy=-std::cos(ang);
-            const float s=(n==0 || n==ticks-1 || n==(ticks-1)/2)?7.f:4.f;
-            g.setColour(juce::Colour(0xff75582e));
-            g.drawLine(cx+radius*ux,cy+radius*uy,
-                       cx+(radius+s)*ux,cy+(radius+s)*uy,(n%2==0)?1.8f:1.f);
-        }
-    };
-    auto vDivider=[&](float x,float y,float height) {
-        g.setColour(juce::Colour(0x87552b14));
-        g.drawLine(x,y,x,y+height,1.f);
-        g.setColour(juce::Colour(0x88ffffd9));
-        g.drawLine(x+2,y,x+2,y+height,1.f);
-    };
-
-    // One unified steel enclosure; no exposed obsolete graphics.
-    engraving({115.f,317.f,1437.f,369.f});
-    const float panelsX[]={132.f,334.f,536.f,738.f,940.f,1142.f,1344.f};
-    const char* names[]={"SteamSweep","SteamBreath","SteamGuard","SteamSibil",
-                         "SteamRider","WhisperLift","SteamPolish"};
-    const char* captions[]={"MOUTH CLICKS / NOISE","BREATH CONTROL","PLOSIVE CONTROL",
-                            "SIBILANCE CONTROL","VOCAL LEVEL RIDER","UPWARD COMPRESSION",
-                            "VOCAL EQ / CHARACTER"};
-    const char* mainLabels[]={"REDUCTION","BREATH AMOUNT","REDUCTION",
-                              "REDUCTION","AMOUNT","LIFT","AMOUNT"};
-    const float mainX[]={190.f,389.f,592.f,793.f,989.f,1190.f,1385.f};
-    const char* littleLabels[][3]={
-        {"CLICK","RUMBLE","NOISE"},
-        {"","",""},
-        {"FREQ","HOLD","SENS"},
-        {"FREQ","WIDTH","SENS"},
-        {"TARGET","RANGE","SPEED"},
-        {"THRESH","RANGE","ATTACK"},
-        {"","",""}
-    };
-    const float littleX[][3]={
-        {147.f,209.f,272.f},{349.f,410.f,474.f},{552.f,617.f,682.f},
-        {748.f,811.f,870.f},{948.f,1010.f,1072.f},{1146.f,1210.f,1272.f},
-        {0.f,0.f,0.f}
-    };
-
-    for(int k=0;k<steam::kModuleCount;++k) {
-        const auto x=panelsX[k];
-        face({x,328.f,199.f,352.f});
-        brassPlate({x+7.f,334.f,185.f,43.f},"",15.f);
-        // The power button sits at x+14, clear of the engraved module name.
-        letters(g,names[k],x+47.f,339.f,145.f,31.f,21.f,luminous,true);
-        letters(g,captions[k],x+7.f,386.f,185.f,26.f,12.f,juce::Colour(0xff4d3322),true);
-        g.setColour(juce::Colour(0x88866337));
-        g.drawHorizontalLine(415,x+12.f,x+185.f);
-        const float cx=mainX[k]+51.f,cy=474.f;
-        arcScale(cx,cy,50.f,13);
-        letters(g,"0",cx-67.f,513.f,21.f,17.f,12.f,ink,true);
-        letters(g,"100",cx+44.f,513.f,35.f,17.f,12.f,ink,true);
-        letters(g,mainLabels[k],cx-72.f,530.f,144.f,17.f,13.f,juce::Colour(0xff4f3625),true);
-        // A small REAL gain-processing meter at the right of each main dial.
-        const float meterX[]={307.f,510.f,708.f,910.f,1110.f,1305.f,1502.f};
-        g.setColour(juce::Colour(0xff6c4826));
-        g.drawRoundedRectangle({meterX[k]-2.f,435.f,21.f,70.f},3.f,1.1f);
-        if(k==1) {
-            // Breath deliberately has ONE control. The vacant space is used
-            // as a clean etching, not a dead rectangle pretending to work.
-            g.setColour(juce::Colour(0x887f542b));
-            for(int i=0;i<3;++i) {
-                juce::Path breath;
-                const float by=571.f+float(i)*15.f;
-                breath.startNewSubPath(x+25.f,by);
-                breath.cubicTo(x+62.f,by-14.f,x+92.f,by+13.f,x+143.f,by-8.f);
-                g.strokePath(breath,juce::PathStrokeType(i==1?1.7f:1.f));
-            }
-            letters(g,"AUTOMATIC BREATH DETECTION",x+9.f,625.f,181.f,20.f,11.f,ink,true);
-        } else if(k<6) {
-            for(int j=0;j<3;++j) {
-                const float lx=littleX[k][j];
-                arcScale(lx+27.f,573.f,29.f,7);
-                letters(g,littleLabels[k][j],lx-6.f,611.f,66.f,19.f,11.f,ink,true);
-            }
-        } else {
-            letters(g,"CHARACTER",x+15.f,557.f,170.f,18.f,11.f,ink,true);
-            const char* pp[]={"WARM","PRESENCE","AIR"};
-            for(int j=0;j<3;++j) {
-                brassPlate({x+3.f+j*60.f,573.f,57.f,41.f},pp[j],j==1?10.f:12.f);
-            }
-        }
-        if(k==4 || k==5) {
-            brassPlate({x+14.f,631.f,170.f,35.f},k==4?"SIDECHAIN":"VOICE PROTECT",13.f);
-        } else if(k!=1) {
-            g.setColour(juce::Colour(0x88965d28));
-            g.drawHorizontalLine(650,x+22.f,x+175.f);
-            letters(g,k==0?"SURGICAL CLEANUP":k==2?"LOW-FREQUENCY GUARD":
-                      k==3?"SELECTIVE DE-ESSING":"HARMONIC FINISH",
-                      x+13.f,641.f,173.f,21.f,11.f,juce::Colour(0xff68472e),true);
-        }
-        screw(x+12.f,340.f);screw(x+186.f,340.f);
-        screw(x+12.f,667.f);screw(x+186.f,667.f);
-        if(k<6)vDivider(x+197.f,395.f,256.f);
-    }
-
-    // MODE has been removed. The left edge is now ornate enclosure engraving.
-    face({9.f,354.f,113.f,330.f});
-    g.setColour(juce::Colour(0xff876336));
-    for(int i=0;i<7;++i) {
-        const float y=380.f+float(i)*44.f;
-        juce::Path flourish;
-        flourish.startNewSubPath(29.f,y);
-        flourish.cubicTo(58.f,y-20.f,75.f,y+20.f,106.f,y);
-        g.strokePath(flourish,juce::PathStrokeType(1.2f));
-    }
-    screw(22.f,368.f);screw(108.f,368.f);
-    screw(22.f,672.f);screw(108.f,672.f);
-
-    // Central signal-flow plaque, full-width riveted machinery.
-    engraving({165.f,690.f,1305.f,82.f});
-    brassPlate({179.f,699.f,1277.f,27.f},"OPTIMIZED PROCESSING CHAIN",16.f);
-    auto strip=juce::Rectangle<float>(189.f,730.f,1254.f,32.f);
-    juce::ColourGradient chain(juce::Colour(0xff12191f),strip.getX(),strip.getY(),
-                               juce::Colour(0xff282526),strip.getRight(),strip.getBottom(),false);
-    g.setGradientFill(chain);g.fillRoundedRectangle(strip,5.f);
-    g.setColour(juce::Colour(0xffcb8e44));g.drawRoundedRectangle(strip,5.f,1.6f);
-    const char* route[]={"INPUT","Guard","Sweep","Breath","Sibil","Rider","Lift","Polish","OUTPUT"};
-    const float routeX[]={203.f,347.f,482.f,614.f,759.f,887.f,1019.f,1165.f,1326.f};
-    for(int k=0;k<9;++k) {
-        letters(g,route[k],routeX[k],734.f,k==8?105.f:113.f,23.f,14.f,ivory,true);
-        if(k<8) {
-            g.setColour(juce::Colour(0xffffa143));
-            juce::Path chevron;
-            chevron.startNewSubPath(routeX[k]+119.f,739.f);
-            chevron.lineTo(routeX[k]+127.f,744.f);
-            chevron.lineTo(routeX[k]+119.f,751.f);
-            g.strokePath(chevron,juce::PathStrokeType(1.8f));
-        }
-    }
-
-    // Three functional footer groups. The released fourth group is tasteful
-    // artwork, NOT a fake control and NOT a blank patch rectangle.
-    struct Foot {float x,w;const char* name;};
-    const Foot foot[]={{176.f,328.f,"GLOBAL"},{511.f,338.f,"DETECTION & RESPONSE"},
-                       {856.f,285.f,"A / B  GAIN MATCHED"}};
-    for(const auto& f:foot) {
-        face({f.x,784.f,f.w,131.f});
-        brassPlate({f.x+8.f,789.f,f.w-16.f,30.f},f.name,14.f);
-        screw(f.x+14.f,900.f);screw(f.x+f.w-14.f,900.f);
-    }
-    const struct {const char* name;float x;} global[]={
-        {"INPUT TRIM",254.f},{"MAX GAIN",345.f},{"MIX",425.f}};
-    const struct {const char* name;float x;} det[]={
-        {"SENSITIVITY",557.f},{"LOOKAHEAD",650.f},{"SMOOTHING",757.f}};
-    for(const auto& v:global) {
-        arcScale(v.x+27.f,835.f,30.f,7);
-        letters(g,v.name,v.x-20.f,870.f,95.f,21.f,11.f,ink,true);
-    }
-    for(const auto& v:det) {
-        arcScale(v.x+27.f,835.f,30.f,7);
-        letters(g,v.name,v.x-22.f,870.f,99.f,21.f,11.f,ink,true);
-    }
-    for(int i=0;i<4;++i)screw(870.f+float(i)*86.f,905.f);
-    brassPlate({890.f,827.f,61.f,43.f},"A",17.f);
-    brassPlate({954.f,827.f,58.f,43.f},"B",17.f);
-    brassPlate({1011.f,827.f,58.f,43.f},"MATCH",12.f);
-
-    // A compass-like ornament fills the space liberated by LIMITS & SAFETY.
-    // No extra processor or unexplained button is added.
-    face({1149.f,784.f,309.f,131.f});
-    brassPlate({1159.f,790.f,288.f,29.f},"ThomC  •  VOCAL REFINEMENT",14.f);
-    const float compassX=1303.f,compassY=867.f;
-    g.setColour(juce::Colour(0x995b3b24));
-    g.drawEllipse(compassX-31.f,compassY-31.f,62.f,62.f,1.4f);
-    g.drawEllipse(compassX-25.f,compassY-25.f,50.f,50.f,.8f);
-    for(int k=0;k<8;++k) {
-        const float a=float(k)*pi/4.f;
-        const float dx=std::cos(a),dy=std::sin(a);
-        g.drawLine(compassX+dx*19.f,compassY+dy*19.f,
-                   compassX+dx*28.f,compassY+dy*28.f,1.f);
-    }
-    juce::Path needle;
-    needle.startNewSubPath(compassX,compassY-19.f);
-    needle.lineTo(compassX+6.f,compassY+2.f);
-    needle.lineTo(compassX,compassY+19.f);
-    needle.lineTo(compassX-6.f,compassY-2.f);needle.closeSubPath();
-    g.setColour(juce::Colour(0xffa9652b));g.fillPath(needle);
-    g.setColour(juce::Colour(0xffefe0bc));g.fillEllipse(compassX-3.f,compassY-3.f,6.f,6.f);
-    screw(1166.f,901.f);screw(1442.f,901.f);
+        g.drawImage(faceplate,0.f,0.f,baseWidth,baseHeight,
+                    0,0,faceplate.getWidth(),faceplate.getHeight());
+    else g.fillAll(juce::Colour(0xff1b1714));
 }
+
 void SteamFilterAudioProcessorEditor::paint(juce::Graphics& g) {
     juce::Graphics::ScopedSaveState guard(g);
     g.addTransform(juce::AffineTransform::scale(xScale(),yScale()));
@@ -483,7 +246,6 @@ void SteamFilterAudioProcessorEditor::resized() {
     waveform->setBounds(int(203*sx),int(172*sy),int(1022*sx),int(161*sy));
     leftMeter->setBounds(int(47*sx),int(357*sy),int(82*sx),int(10*sy));
     rightMeter->setBounds(int(1537*sx),int(393*sy),int(83*sx),int(290*sy));
-    cpuGauge->setBounds(int(10*sx),int(719*sy),int(169*sx),int(176*sy));
     constexpr float metersX[]={307,510,708,910,1110,1305,1502};
     for(int k=0;k<steam::kModuleCount;++k)
         moduleMeters[k]->setBounds(int(metersX[k]*sx),int(438*sy),int(17*sx),int(64*sy));
@@ -496,7 +258,7 @@ void SteamFilterAudioProcessorEditor::timerCallback() {
         currentSuggestion=suggestion;
         suggestionAvailable=suggestion.confidence>=.12f;
         suggestButton->setEnabled(suggestionAvailable);
-        analysisStatus=suggestionAvailable?"Ready — review suggestions":"No usable vocal detected";repaint();
+        analysisStatus=suggestionAvailable?"Ready - review suggestions":"No usable vocal detected";repaint();
     }
     const float pr=processor.engine.analysisProgress();
     if(pr>0.f && pr<1.f && !suggestionAvailable) {
@@ -620,25 +382,7 @@ void SteamFilterAudioProcessorEditor::SideMeter::paint(juce::Graphics& g) {
         g.fillRoundedRectangle({2.f,2.f,(b.getWidth()-4.f)*fraction,b.getHeight()-4.f},2.f);
     }
 }
-void SteamFilterAudioProcessorEditor::PressureGauge::timerCallback(){
-    displayed+=(owner.dspLoad.load(std::memory_order_relaxed)-displayed)*.2f;
-    if(isShowing())repaint();
-}
-void SteamFilterAudioProcessorEditor::PressureGauge::paint(juce::Graphics& g) {
-    static const auto img=juce::ImageCache::getFromMemory(BinaryData::GaugeFace_png,BinaryData::GaugeFace_pngSize);
-    if(img.isValid())g.drawImageWithin(img,0,0,getWidth(),getHeight(),juce::RectanglePlacement::centred);
-    const auto b=getLocalBounds().toFloat();
-    const auto center=juce::Point<float>(b.getWidth()*.5f,b.getHeight()*.46f);
-    const float angle=2.65f+juce::jlimit(0.f,1.f,displayed)*4.3f;
-    const auto length=b.getWidth()*.29f;
-    g.setColour(juce::Colour(0x80251910));
-    g.drawLine(center.x+1.4f,center.y+1.4f,center.x+std::cos(angle)*length+1.4f,
-        center.y+std::sin(angle)*length+1.4f,4.f);
-    g.setColour(juce::Colour(0xff9f2317));
-    g.drawLine(center.x,center.y,center.x+std::cos(angle)*length,
-        center.y+std::sin(angle)*length,2.5f);
-    g.setColour(juce::Colour(0xffd5a25a));g.fillEllipse(center.x-3,center.y-3,6,6);
-}
+
 void SteamFilterAudioProcessorEditor::showPresets(){
     juce::PopupMenu m;m.addItem(1,"Transparent Vocal");m.addItem(2,"Vocal Clean & Polish");m.addItem(3,"Whisper Forward");
     m.addSeparator();m.addItem(4,"Save preset...");m.addItem(5,"Load preset...");

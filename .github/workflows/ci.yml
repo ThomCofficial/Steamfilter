@@ -38,6 +38,18 @@ jobs:
         run: |
           cmake --build build/win --config Release --target SteamDSPStress SteamDSPModules --parallel 4
           ctest --test-dir build/win -C Release --output-on-failure
+      - name: Compile actual VST3 host teardown regression
+        run: cmake --build build/win --config Release --target SteamFilterVST3HostSmoke --parallel 4
+      - name: Repeatedly load and remove real VST3 through JUCE host
+        shell: pwsh
+        run: |
+          $bundle = Get-ChildItem -Path build/win -Filter 'SteamFilter.vst3' -Directory -Recurse |
+            Where-Object { $_.FullName -match 'SteamFilter_artefacts' } | Select-Object -First 1
+          $hostExe = Get-ChildItem -Path build/win -Filter 'SteamFilterVST3HostSmoke.exe' -File -Recurse | Select-Object -First 1
+          if ($null -eq $bundle -or $null -eq $hostExe) { throw 'VST3 bundle or host smoke executable absent' }
+          & $hostExe.FullName $bundle.FullName
+          if ($LASTEXITCODE -ne 0) { throw "VST3 host teardown failed: $LASTEXITCODE" }
+
       - name: Upload rendered JUCE UI preview
         uses: actions/upload-artifact@v4
         with:

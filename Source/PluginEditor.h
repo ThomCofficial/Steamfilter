@@ -44,12 +44,6 @@ private:
         void paint(juce::Graphics&) override;
         void timerCallback() override;
     };
-    struct PressureGauge final : juce::Component, private juce::Timer {
-        SteamFilterAudioProcessor& owner;float displayed=0;
-        explicit PressureGauge(SteamFilterAudioProcessor& p):owner(p){startTimerHz(12);}
-        void paint(juce::Graphics&) override;
-        void timerCallback() override;
-    };
     struct KnobInfo {juce::Slider* slider=nullptr;juce::Rectangle<float> r;};
     struct ButtonInfo {juce::Button* button=nullptr;juce::Rectangle<float> r;};
     SteamFilterAudioProcessor& processor;
@@ -66,7 +60,6 @@ private:
     std::array<std::unique_ptr<ModuleMeter>,steam::kModuleCount> moduleMeters;
     std::unique_ptr<WaveView> waveform;
     std::unique_ptr<SideMeter> leftMeter,rightMeter;
-    std::unique_ptr<PressureGauge> cpuGauge;
     std::unique_ptr<juce::FileChooser> fileChooser;
     juce::TextButton* analyzeButton=nullptr;
     juce::TextButton* suggestButton=nullptr;
