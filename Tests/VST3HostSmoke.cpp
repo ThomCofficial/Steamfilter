@@ -13,7 +13,7 @@ int main(int argc, char* argv[]) {
     const juce::File vst3(juce::String::fromUTF8(argv[1]));
     if(!vst3.exists()) {std::cerr<<"VST3 bundle missing\n";return 3;}
     juce::AudioPluginFormatManager manager;
-    manager.addDefaultFormats();
+    manager.addFormat(new juce::VST3PluginFormat());
     juce::VST3PluginFormat format;
     juce::OwnedArray<juce::PluginDescription> descriptions;
     format.findAllTypesForFile(descriptions,vst3.getFullPathName());
