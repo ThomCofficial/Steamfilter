@@ -50,23 +50,27 @@ BrassLookAndFeel::BrassLookAndFeel(){
 }
 void BrassLookAndFeel::drawRotarySlider(juce::Graphics& g,int x,int y,int w,int h,
                                       float pos,float start,float end,juce::Slider&) {
-    // Unmarked, photorealistic hardware + ONE live indicator: no doubled pointers.
+    // Rotate the ENTIRE hardware sprite. A fixed image with a moving painted
+    // pointer creates two competing knob positions when the asset has a marker.
+    // The centre stays anchored, and the sprite follows the actual APVTS value.
     static const auto knob=juce::ImageCache::getFromMemory(
         BinaryData::KnobHardwarePremium_png,BinaryData::KnobHardwarePremium_pngSize);
     const float cx=x+w*.5f,cy=y+h*.5f;
     const float d=float(std::min(w,h))*.985f;
-    if(knob.isValid())
-        g.drawImage(knob,cx-d*.5f,cy-d*.5f,d,d,0,0,knob.getWidth(),knob.getHeight());
-    const float a=start+juce::jlimit(0.f,1.f,pos)*(end-start);
-    const float radius=d*.29f,vx=std::sin(a),vy=-std::cos(a);
-    g.setColour(juce::Colour(0xab120b08));
-    g.drawLine(cx+1.1f,cy+1.8f,cx+vx*radius+1.1f,cy+vy*radius+1.8f,d*.067f);
-    g.setColour(juce::Colour(0xffffa43d));
-    g.drawLine(cx,cy,cx+vx*radius,cy+vy*radius,d*.047f);
-    g.setColour(juce::Colour(0xffffe8ab));
-    g.drawLine(cx,cy,cx+vx*radius*.96f,cy+vy*radius*.96f,d*.015f);
-    g.setColour(juce::Colour(0xffd2a35e));
-    g.fillEllipse(cx-2.f,cy-2.f,4.f,4.f);
+    const float angle=start+juce::jlimit(0.f,1.f,pos)*(end-start);
+    if(knob.isValid()) {
+        juce::Graphics::ScopedSaveState save(g);
+        g.addTransform(juce::AffineTransform::rotation(angle,cx,cy));
+        g.drawImage(knob,cx-d*.5f,cy-d*.5f,d,d,
+                    0,0,knob.getWidth(),knob.getHeight());
+    } else {
+        g.setColour(juce::Colour(0xff30251d));
+        g.fillEllipse(cx-d*.5f,cy-d*.5f,d,d);
+        const float radius=d*.34f;
+        g.setColour(juce::Colour(0xffffcf75));
+        g.drawLine(cx,cy,cx+std::sin(angle)*radius,
+                   cy-std::cos(angle)*radius,d*.045f);
+    }
 }
 
 void BrassLookAndFeel::drawButtonBackground(juce::Graphics& g,juce::Button& b,const juce::Colour&,bool over,bool down) {
